@@ -4,10 +4,10 @@ import (
 	"fmt"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
-	"github.com/consensys/gnark/std/math/bitslice"
 	"github.com/consensys/gnark/std/math/emulated"
+
+	"github.com/consensys/linea-monorepo/prover/maths/field/emulated/sw_bn254"
+
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/plonk"
 	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
 	"github.com/consensys/linea-monorepo/prover/protocol/wizard"
@@ -18,11 +18,16 @@ const (
 )
 
 const (
-	nbRowsPerEcAdd = 12
+	// EcAdd operation requires 54 rows: 2 operand points and 1 result point, each
+	// containing 2 coordinates (X and Y) of bn254 base field elements (up to 254
+	// bits). Each coordinate is divided into 9 31-bit elements of the KoalaBear
+	// finite field.
+	//
+	// Total: 3 points × 2 coordinates × 9 elements = 54 rows.
+	nbRowsPerEcAdd = 54
 )
 
-// EcMulIntegration integrated EC_MUL precompile call verification inside a
-// gnark circuit.
+// EcAdd integrates EC_ADD precompile call verification inside a gnark circuit.
 type EcAdd struct {
 	*EcDataAddSource
 	AlignedGnarkData *plonk.Alignment
@@ -93,20 +98,20 @@ type MultiECAddCircuit struct {
 
 type ECAddInstance struct {
 	// First input to addition
-	P_X_hi, P_X_lo frontend.Variable `gnark:",public"`
-	P_Y_hi, P_Y_lo frontend.Variable `gnark:",public"`
+	P_X [9]frontend.Variable `gnark:",public"`
+	P_Y [9]frontend.Variable `gnark:",public"`
 
 	// Second input to addition
-	Q_X_hi, Q_X_lo frontend.Variable `gnark:",public"`
-	Q_Y_hi, Q_Y_lo frontend.Variable `gnark:",public"`
+	Q_X [9]frontend.Variable `gnark:",public"`
+	Q_Y [9]frontend.Variable `gnark:",public"`
 
 	// The result of the addition. Is provided non-deterministically by the
 	// caller, we have to ensure that the result is correct.
-	R_X_hi, R_X_lo frontend.Variable `gnark:",public"`
-	R_Y_hi, R_Y_lo frontend.Variable `gnark:",public"`
+	R_X [9]frontend.Variable `gnark:",public"`
+	R_Y [9]frontend.Variable `gnark:",public"`
 }
 
-// NewECMulCircuit creates a new circuit for verifying the EC_MUL precompile
+// NewECAddCircuit creates a new circuit for verifying the EC_ADD precompile
 // based on the defined number of inputs.
 func NewECAddCircuit(limits *Limits) *MultiECAddCircuit {
 	return &MultiECAddCircuit{
@@ -115,7 +120,6 @@ func NewECAddCircuit(limits *Limits) *MultiECAddCircuit {
 }
 
 func (c *MultiECAddCircuit) Define(api frontend.API) error {
-
 	f, err := emulated.NewField[sw_bn254.BaseField](api)
 	if err != nil {
 		return fmt.Errorf("field emulation: %w", err)
@@ -128,57 +132,35 @@ func (c *MultiECAddCircuit) Define(api frontend.API) error {
 	Qs := make([]sw_bn254.G1Affine, nbInstances)
 	Rs := make([]sw_bn254.G1Affine, nbInstances)
 	for i := range c.Instances {
-
-		PXlimbs := make([]frontend.Variable, 4)
-		PXlimbs[2], PXlimbs[3] = bitslice.Partition(api, c.Instances[i].P_X_hi, 64, bitslice.WithNbDigits(128))
-		PXlimbs[0], PXlimbs[1] = bitslice.Partition(api, c.Instances[i].P_X_lo, 64, bitslice.WithNbDigits(128))
-		PX := f.NewElement(PXlimbs)
-		PYlimbs := make([]frontend.Variable, 4)
-		PYlimbs[2], PYlimbs[3] = bitslice.Partition(api, c.Instances[i].P_Y_hi, 64, bitslice.WithNbDigits(128))
-		PYlimbs[0], PYlimbs[1] = bitslice.Partition(api, c.Instances[i].P_Y_lo, 64, bitslice.WithNbDigits(128))
-		PY := f.NewElement(PYlimbs)
 		P := sw_bn254.G1Affine{
-			X: *PX,
-			Y: *PY,
+			X: *f.NewElement(c.Instances[i].P_X[:]),
+			Y: *f.NewElement(c.Instances[i].P_Y[:]),
 		}
 
-		QXlimbs := make([]frontend.Variable, 4)
-		QXlimbs[2], QXlimbs[3] = bitslice.Partition(api, c.Instances[i].Q_X_hi, 64, bitslice.WithNbDigits(128))
-		QXlimbs[0], QXlimbs[1] = bitslice.Partition(api, c.Instances[i].Q_X_lo, 64, bitslice.WithNbDigits(128))
-		QX := f.NewElement(QXlimbs)
-		QYlimbs := make([]frontend.Variable, 4)
-		QYlimbs[2], QYlimbs[3] = bitslice.Partition(api, c.Instances[i].Q_Y_hi, 64, bitslice.WithNbDigits(128))
-		QYlimbs[0], QYlimbs[1] = bitslice.Partition(api, c.Instances[i].Q_Y_lo, 64, bitslice.WithNbDigits(128))
-		QY := f.NewElement(QYlimbs)
 		Q := sw_bn254.G1Affine{
-			X: *QX,
-			Y: *QY,
+			X: *f.NewElement(c.Instances[i].Q_X[:]),
+			Y: *f.NewElement(c.Instances[i].Q_Y[:]),
 		}
 
-		RXlimbs := make([]frontend.Variable, 4)
-		RXlimbs[2], RXlimbs[3] = bitslice.Partition(api, c.Instances[i].R_X_hi, 64, bitslice.WithNbDigits(128))
-		RXlimbs[0], RXlimbs[1] = bitslice.Partition(api, c.Instances[i].R_X_lo, 64, bitslice.WithNbDigits(128))
-		RX := f.NewElement(RXlimbs)
-		RYlimbs := make([]frontend.Variable, 4)
-		RYlimbs[2], RYlimbs[3] = bitslice.Partition(api, c.Instances[i].R_Y_hi, 64, bitslice.WithNbDigits(128))
-		RYlimbs[0], RYlimbs[1] = bitslice.Partition(api, c.Instances[i].R_Y_lo, 64, bitslice.WithNbDigits(128))
-		RY := f.NewElement(RYlimbs)
 		R := sw_bn254.G1Affine{
-			X: *RX,
-			Y: *RY,
+			X: *f.NewElement(c.Instances[i].R_X[:]),
+			Y: *f.NewElement(c.Instances[i].R_Y[:]),
 		}
+
 		Ps[i] = P
 		Qs[i] = Q
 		Rs[i] = R
 	}
 
-	curve, err := algebra.GetCurve[sw_bn254.ScalarField, sw_bn254.G1Affine](api)
+	curve, err := sw_bn254.Curve(api)
 	if err != nil {
 		panic(err)
 	}
+
 	for i := range Rs {
 		res := curve.AddUnified(&Ps[i], &Qs[i])
 		curve.AssertIsEqual(&Rs[i], res)
 	}
+
 	return nil
 }
