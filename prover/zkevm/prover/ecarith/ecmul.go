@@ -4,11 +4,10 @@ import (
 	"fmt"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra"
 	"github.com/consensys/gnark/std/algebra/algopts"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
-	"github.com/consensys/gnark/std/math/bitslice"
 	"github.com/consensys/gnark/std/math/emulated"
+
+	"github.com/consensys/linea-monorepo/prover/maths/field/emulated/sw_bn254"
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/plonk"
 	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
 	"github.com/consensys/linea-monorepo/prover/protocol/wizard"
@@ -20,7 +19,13 @@ const (
 )
 
 const (
-	nbRowsPerEcMul = 10
+	// EcMul operation requires 45 rows: 1 operand point and scalar + 1 result point,
+	// each point contains 2 scalars (X and Y) of bn254 base field elements (up to
+	// 254 bits). Each scalar is divided into 9 31-bit elements of the [koalabear]
+	// finite field.
+	//
+	// Total: 2 points × 2 coordinates × 9 elements + 9 = 45 rows.
+	nbRowsPerEcMul = 45
 )
 
 // EcMul integrated EC_MUL precompile call verification inside a gnark circuit.
@@ -94,20 +99,20 @@ type MultiECMulCircuit struct {
 
 type ECMulInstance struct {
 	// We work with the limbs decomposition coming from the arithmetization
-	// where the values are split into 128 bits with high and low parts. The
+	// where the values are split into 9 elements with 31 bits each. The
 	// high part is the most significant bits and the low part is the least
-	// significant bits. The values are already range checked to be in 128 bit
+	// significant bits. The values are already range checked to be in 31 bit
 	// range.
 
-	P_X_hi, P_X_lo frontend.Variable `gnark:",public"`
-	P_Y_hi, P_Y_lo frontend.Variable `gnark:",public"`
+	P_X [9]frontend.Variable `gnark:",public"`
+	P_Y [9]frontend.Variable `gnark:",public"`
 
-	N_hi, N_lo frontend.Variable `gnark:",public"`
+	N [9]frontend.Variable `gnark:",public"`
 
 	// The result of the multiplication. Is provided by the caller, we have to
 	// ensure that the result is correct.
-	R_X_hi, R_X_lo frontend.Variable `gnark:",public"`
-	R_Y_hi, R_Y_lo frontend.Variable `gnark:",public"`
+	R_X [9]frontend.Variable `gnark:",public"`
+	R_Y [9]frontend.Variable `gnark:",public"`
 }
 
 // NewECMulCircuit creates a new circuit for verifying the EC_MUL precompile
@@ -119,7 +124,6 @@ func NewECMulCircuit(limits *Limits) *MultiECMulCircuit {
 }
 
 func (c *MultiECMulCircuit) Define(api frontend.API) error {
-
 	f, err := emulated.NewField[sw_bn254.BaseField](api)
 	if err != nil {
 		return fmt.Errorf("field emulation: %w", err)
@@ -137,49 +141,32 @@ func (c *MultiECMulCircuit) Define(api frontend.API) error {
 	Ns := make([]sw_bn254.Scalar, nbInstances)
 	Rs := make([]sw_bn254.G1Affine, nbInstances)
 	for i := range c.Instances {
-
-		PXlimbs := make([]frontend.Variable, 4)
-		PXlimbs[2], PXlimbs[3] = bitslice.Partition(api, c.Instances[i].P_X_hi, 64, bitslice.WithNbDigits(128))
-		PXlimbs[0], PXlimbs[1] = bitslice.Partition(api, c.Instances[i].P_X_lo, 64, bitslice.WithNbDigits(128))
-		PX := f.NewElement(PXlimbs)
-		PYlimbs := make([]frontend.Variable, 4)
-		PYlimbs[2], PYlimbs[3] = bitslice.Partition(api, c.Instances[i].P_Y_hi, 64, bitslice.WithNbDigits(128))
-		PYlimbs[0], PYlimbs[1] = bitslice.Partition(api, c.Instances[i].P_Y_lo, 64, bitslice.WithNbDigits(128))
-		PY := f.NewElement(PYlimbs)
 		P := sw_bn254.G1Affine{
-			X: *PX,
-			Y: *PY,
+			X: *f.NewElement(c.Instances[i].P_X[:]),
+			Y: *f.NewElement(c.Instances[i].P_Y[:]),
 		}
 
-		Nlimbs := make([]frontend.Variable, 4)
-		Nlimbs[2], Nlimbs[3] = bitslice.Partition(api, c.Instances[i].N_hi, 64, bitslice.WithNbDigits(128))
-		Nlimbs[0], Nlimbs[1] = bitslice.Partition(api, c.Instances[i].N_lo, 64, bitslice.WithNbDigits(128))
-		N := s.NewElement(Nlimbs)
+		N := *s.NewElement(c.Instances[i].N[:])
 
-		RXlimbs := make([]frontend.Variable, 4)
-		RXlimbs[2], RXlimbs[3] = bitslice.Partition(api, c.Instances[i].R_X_hi, 64, bitslice.WithNbDigits(128))
-		RXlimbs[0], RXlimbs[1] = bitslice.Partition(api, c.Instances[i].R_X_lo, 64, bitslice.WithNbDigits(128))
-		RX := f.NewElement(RXlimbs)
-		RYlimbs := make([]frontend.Variable, 4)
-		RYlimbs[2], RYlimbs[3] = bitslice.Partition(api, c.Instances[i].R_Y_hi, 64, bitslice.WithNbDigits(128))
-		RYlimbs[0], RYlimbs[1] = bitslice.Partition(api, c.Instances[i].R_Y_lo, 64, bitslice.WithNbDigits(128))
-		RY := f.NewElement(RYlimbs)
 		R := sw_bn254.G1Affine{
-			X: *RX,
-			Y: *RY,
+			X: *f.NewElement(c.Instances[i].R_X[:]),
+			Y: *f.NewElement(c.Instances[i].R_Y[:]),
 		}
+
 		Ps[i] = P
-		Ns[i] = *N
+		Ns[i] = N
 		Rs[i] = R
 	}
 
-	curve, err := algebra.GetCurve[sw_bn254.ScalarField, sw_bn254.G1Affine](api)
+	curve, err := sw_bn254.Curve(api)
 	if err != nil {
 		panic(err)
 	}
+
 	for i := range Rs {
 		res := curve.ScalarMul(&Ps[i], &Ns[i], algopts.WithCompleteArithmetic())
 		curve.AssertIsEqual(&Rs[i], res)
 	}
+
 	return nil
 }
