@@ -21,7 +21,7 @@ const (
 const (
 	// EcMul operation requires 45 rows: 1 operand point and scalar + 1 result point,
 	// each point contains 2 scalars (X and Y) of bn254 base field elements (up to
-	// 254 bits). Each scalar is divided into 9 31-bit elements of the [koalabear]
+	// 254 bits). Each scalar is divided into 9 30-bit elements of the [koalabear]
 	// finite field.
 	//
 	// Total: 2 points × 2 coordinates × 9 elements + 9 = 45 rows.

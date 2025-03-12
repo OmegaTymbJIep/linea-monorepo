@@ -20,7 +20,7 @@ const (
 const (
 	// EcAdd operation requires 54 rows: 2 operand points and 1 result point, each
 	// containing 2 coordinates (X and Y) of bn254 base field elements (up to 254
-	// bits). Each coordinate is divided into 9 31-bit elements of the KoalaBear
+	// bits). Each coordinate is divided into 9 30-bit elements of the KoalaBear
 	// finite field.
 	//
 	// Total: 3 points × 2 coordinates × 9 elements = 54 rows.
