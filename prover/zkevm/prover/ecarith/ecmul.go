@@ -48,7 +48,7 @@ func NewEcMulZkEvm(comp *wizard.CompiledIOP, limits *Limits) *EcMul {
 			IsData:  comp.Columns.GetHandle("ecdata.IS_ECMUL_DATA"),
 			IsRes:   comp.Columns.GetHandle("ecdata.IS_ECMUL_RESULT"),
 		},
-		[]plonk.Option{plonk.WithRangecheck(16, 6, true)},
+		[]plonk.Option{plonk.WithRangecheck(15, 2, true)},
 	)
 }
 

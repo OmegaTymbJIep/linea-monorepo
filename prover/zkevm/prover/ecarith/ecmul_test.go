@@ -112,7 +112,7 @@ func TestEcMulIntegration(t *testing.T) {
 				IsData:  ct.GetCommit(b, "IS_DATA"),
 				IsRes:   ct.GetCommit(b, "IS_RES"),
 			}
-			ecMul = newEcMul(b.CompiledIOP, limits, ecMulSource, []plonk.Option{plonk.WithRangecheck(16, 6, true)})
+			ecMul = newEcMul(b.CompiledIOP, limits, ecMulSource, []plonk.Option{plonk.WithRangecheck(15, 2, true)})
 		},
 		dummy.Compile,
 	)

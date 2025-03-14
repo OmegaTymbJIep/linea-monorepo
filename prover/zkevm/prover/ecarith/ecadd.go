@@ -47,7 +47,7 @@ func NewEcAddZkEvm(comp *wizard.CompiledIOP, limits *Limits) *EcAdd {
 			IsData:  comp.Columns.GetHandle("ecdata.IS_ECADD_DATA"),
 			IsRes:   comp.Columns.GetHandle("ecdata.IS_ECADD_RESULT"),
 		},
-		[]plonk.Option{plonk.WithRangecheck(16, 6, true)},
+		[]plonk.Option{plonk.WithRangecheck(15, 2, true)},
 	)
 }
 
