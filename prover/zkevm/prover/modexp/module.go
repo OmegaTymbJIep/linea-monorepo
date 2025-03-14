@@ -4,6 +4,7 @@ import (
 	"github.com/consensys/linea-monorepo/prover/maths/common/smartvectors"
 	"github.com/consensys/linea-monorepo/prover/maths/field"
 	"github.com/consensys/linea-monorepo/prover/protocol/column"
+	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/expr_handle"
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/plonk"
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/projection"
 	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
@@ -14,10 +15,25 @@ import (
 )
 
 const (
-	// modexpNumRows corresponds to the number of rows present in the MODEXP
-	// module to represent a single instance. Each instance has 4 operands
-	// dispatched in limbs of
-	modexpNumRowsPerInstance = 32 * 4
+	// numRowsPerOperand is the number of rows needed to represent a single operand
+	// in the MODEXP module. The operands max size is 4096 bits (Large instance),
+	// thus to put into the KoalaBear field we need 4096/30 = 137 limbs, 30 bits each.
+	numRowsPerOperand = 137
+
+	// numLimbsPerSmallOperand is the number of limbs needed to represent a single
+	// operand in the small instance of the modexp module. The small instance is
+	// 256 bits, thus to put into the KoalaBear field we need 256/30 = 9 limbs,
+	// 30 bits each.
+	numLimbsPerSmallOperand = 9
+
+	// modexpNumRowsPerInstance is the number of rows present in the MODEXP module
+	// to represent a single instance.
+	modexpNumRowsPerInstance = numRowsPerOperand * 4
+
+	// mostSignificantLimbRange is the maximum value that the most significant
+	// limb of the modexp operand can take. In both cases (small and large instances)
+	// we can have overhead of 14 bits. 137 * 30 - 4096 = 9 * 30 - 256 = 14.
+	mostSignificantLimbRange = 1 << (256 - 8*30)
 
 	// nbInstancePerCircuit256 and nbInstancePerCircuit4096 state how many
 	// instance of modexp are taken care of by a single gnark circuit in the
@@ -44,10 +60,15 @@ type Module struct {
 	// constraint from the BLK_MDXP (using IsActive as filter). It is constrained
 	// to zero when IsActive = 0.
 	Limbs ifaces.Column
-	// LsbIndicator is a precomputed column marking with a 1 the last two limbs
-	// of every operands. The column is precomputed because all Modexp provided
-	// by the arithmetization have exactly the same layout.
+	// LsbIndicator is a precomputed column marking with a 1 the last 9 limbs
+	// of every operand, this limbs correspond to the small instance of the
+	// modexp. The column is precomputed because all Modexp provided by the
+	// arithmetization have exactly the same layout.
 	LsbIndicator ifaces.Column
+	// MostSignifLimbIndicator is a precomputed column marking with a 1 the last
+	// limb of every operand. The column is precomputed because all Modexp provided
+	// by the arithmetization have exactly the same layout.
+	MostSignifLimbIndicator ifaces.Column
 	// ToSmallCirc and ToLargeCirc are indicator columns marking with a 1 the
 	// positions of limbs corresponding to public inputs of (respectely) the
 	// small and the large circuit.
@@ -68,7 +89,7 @@ type Module struct {
 // does not define them.
 func NewModuleZkEvm(comp *wizard.CompiledIOP, settings Settings) *Module {
 	return newModule(comp, newZkEVMInput(comp, settings)).
-		WithCircuit(comp, plonk.WithRangecheck(16, 6, false))
+		WithCircuit(comp, plonk.WithRangecheck(15, 2, false))
 }
 
 func newModule(comp *wizard.CompiledIOP, input Input) *Module {
@@ -86,7 +107,9 @@ func newModule(comp *wizard.CompiledIOP, input Input) *Module {
 			IsSmall:                comp.InsertCommit(0, "MODEXP_IS_SMALL", size),
 			IsLarge:                comp.InsertCommit(0, "MODEXP_IS_LARGE", size),
 			LsbIndicator:           comp.InsertPrecomputed("MODEXP_LSB_INDICATOR", lsbIndicatorValue(size)),
-			ToSmallCirc:            comp.InsertCommit(0, "MODEXP_TO_SMALL_CIRC", size),
+			MostSignifLimbIndicator: comp.InsertPrecomputed("MODEXP_LSB_MOST_SIGNIF_LIMB_INDICATOR",
+				mostLimbIndicatorValue(size)),
+			ToSmallCirc: comp.InsertCommit(0, "MODEXP_TO_SMALL_CIRC", size),
 		}
 	)
 
@@ -108,7 +131,7 @@ func newModule(comp *wizard.CompiledIOP, input Input) *Module {
 	return mod
 }
 
-// WithCircuits adds the Plonk-in-Wizard circuit verification to complete
+// WithCircuit adds the Plonk-in-Wizard circuit verification to complete
 // the anti-chamber.
 func (mod *Module) WithCircuit(comp *wizard.CompiledIOP, options ...plonk.Option) *Module {
 
@@ -142,15 +165,34 @@ func (mod *Module) WithCircuit(comp *wizard.CompiledIOP, options ...plonk.Option
 }
 
 // lsbIndicatorValue returns the smartvector corresponding to the given size.
-// It is constructed the same pattern every 32 field elements which corresponds
-// to two 1s followed by 30 zeroes.
+// It is constructed the same pattern every 137 field elements which
+// corresponds to 9 1s followed by 128 (137 - 9) zeroes.
 func lsbIndicatorValue(size int) smartvectors.SmartVector {
 	resSlice := make([]field.Element, size)
 	for i := range resSlice {
-		if i%32 >= 30 {
+		if i%numRowsPerOperand >= numRowsPerOperand-numLimbsPerSmallOperand {
 			resSlice[i].SetOne()
 		}
 	}
+	return smartvectors.NewRegular(resSlice)
+}
+
+// mostLimbIndicatorValue creates a smartvector where the elements at positions
+// corresponding to the most significant limb of each operand set to 1. These
+// positions occur every 137 elements starting from the 0 position and starting
+// from the 128 (137 - 9) position.
+func mostLimbIndicatorValue(size int) smartvectors.SmartVector {
+	resSlice := make([]field.Element, size)
+
+	for i := 0; i < size; i += numRowsPerOperand {
+		resSlice[i].SetOne()
+	}
+
+	firstMostSignificantLimb := numRowsPerOperand - numLimbsPerSmallOperand - 1
+	for i := firstMostSignificantLimb; i < size; i += numRowsPerOperand {
+		resSlice[i].SetOne()
+	}
+
 	return smartvectors.NewRegular(resSlice)
 }
 
@@ -235,6 +277,27 @@ func (mod *Module) csIsSmallAndLarge(comp *wizard.CompiledIOP) {
 			mod.IsSmall,
 			sym.Sub(1, mod.LsbIndicator),
 		),
+	)
+
+	//
+	// The constraints below ensures that the most significant limb of the
+	// operands does not exceed 16 bytes. This is necessary because using
+	// 30 bit limbs one will have a 14 bit overhead in the most significant
+	// limb (in case of 256 and 4096 bits operands), so we need to check
+	// that they aren't used.
+	//
+
+	mostSignifLimbCol := expr_handle.ExprHandle(
+		comp,
+		sym.Mul(mod.Limbs, mod.MostSignifLimbIndicator),
+		"MODEXP_SMALL_RANGE_MOST_SIGNIFICANT_LIMB",
+	)
+
+	comp.InsertRange(
+		0,
+		"MODEXP_SMALL_RANGE_MOST_SIGNIFICANT_LIMB",
+		mostSignifLimbCol,
+		mostSignificantLimbRange,
 	)
 }
 
