@@ -56,9 +56,9 @@ func (mod *Module) Assign(run *wizard.ProverRuntime) {
 
 		// If we find a non-zero limb in the large part of the operand, we
 		// consider the instance as large.
-		rowsOfLargeOperand := numRowsPerOperand - numLimbsPerSmallOperand
+		rowsOfLargeOperand := numLimbsPerOperand - numLimbsPerSmallOperand
 		for k := 0; k < modexpNumRowsPerInstance; k++ {
-			if k%numRowsPerOperand < rowsOfLargeOperand && !limbs[currPosition+k].IsZero() {
+			if k%numLimbsPerOperand < rowsOfLargeOperand && !limbs[currPosition+k].IsZero() {
 				isLarge = true
 				break
 			}
@@ -77,7 +77,7 @@ func (mod *Module) Assign(run *wizard.ProverRuntime) {
 			builder.isLarge.PushBoolean(isLarge)
 			builder.limbs.PushField(limbs[currPosition+k])
 
-			if !isLarge && k%numRowsPerOperand >= rowsOfLargeOperand {
+			if !isLarge && k%numLimbsPerOperand >= rowsOfLargeOperand {
 				builder.toSmallCirc.PushOne()
 			} else {
 				builder.toSmallCirc.PushZero()

@@ -46,7 +46,7 @@ func TestModexpWithCircuit(t *testing.T) {
 				}
 
 				mod = newModule(build.CompiledIOP, inp).
-					WithCircuit(build.CompiledIOP, plonk.WithRangecheck(21, 4, false))
+					WithCircuit(build.CompiledIOP, plonk.WithRangecheck(15, 2, false))
 			}, dummy.Compile)
 
 			proof := wizard.Prove(cmp, func(run *wizard.ProverRuntime) {

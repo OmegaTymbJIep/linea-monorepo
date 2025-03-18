@@ -3,9 +3,8 @@ package modexp
 import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/evmprecompiles"
-	"github.com/consensys/gnark/std/math/bitslice"
 	"github.com/consensys/gnark/std/math/emulated"
-	"github.com/consensys/gnark/std/math/emulated/emparams"
+	emparams "github.com/consensys/linea-monorepo/prover/maths/field/emulated"
 	"github.com/consensys/linea-monorepo/prover/utils"
 )
 
@@ -13,10 +12,6 @@ const (
 	// bit-size bound for the operands in the small
 	smallModexpSize = 256
 	largeModexpSize = 4096
-	// limbSize is the size (in bits) of a limb as in the public inputs of the
-	// circuit. This is a parameter linked to how the arithmetization encodes
-	// 256 bits integers.
-	limbSizeBits = 128
 )
 
 // modexpCircuit implements the [frontend.Circuit] interface and is responsible
@@ -45,17 +40,21 @@ type modexpCircuitInstance struct {
 // allocate256Bits allocates [modexpCircuit] for n instances assuming the 256-bit
 // variant.
 func allocateCircuit(n int, numBits int) *modexpCircuit {
-
-	if numBits != smallModexpSize && numBits != largeModexpSize {
-		utils.Panic("expected `numBits = {%v, %v}`", smallModexpSize, largeModexpSize)
-	}
-
 	var (
-		numLimbs = numBits / limbSizeBits
+		numLimbs int
 		res      = &modexpCircuit{
 			Instances: make([]modexpCircuitInstance, n),
 		}
 	)
+
+	switch numBits {
+	case smallModexpSize:
+		numLimbs = numLimbsPerSmallOperand
+	case largeModexpSize:
+		numLimbs = numLimbsPerOperand
+	default:
+		utils.Panic("expected `numBits = {%v, %v}`", smallModexpSize, largeModexpSize)
+	}
 
 	for i := range res.Instances {
 		res.Instances[i].Base = make([]frontend.Variable, numLimbs)
@@ -77,15 +76,15 @@ func (m *modexpCircuit) Define(api frontend.API) error {
 			numLimbs = len(m.Instances[i].Base)
 		)
 
-		switch numLimbs * limbSizeBits {
-		case smallModexpSize:
+		switch numLimbs {
+		case numLimbsPerSmallOperand:
 			checkModexpInstance[emparams.Mod1e256](api, &instance)
-		case largeModexpSize:
+		case numLimbsPerOperand:
 			checkModexpInstance[emparams.Mod1e4096](api, &instance)
 		default:
 			utils.Panic(
-				"Unexpected field size = %v, should be either %v or %v",
-				numLimbs*limbSizeBits, smallModexpSize, largeModexpSize,
+				"Unexpected limbs number = %v, should be either %v or %v",
+				numLimbs, numLimbsPerSmallOperand, numLimbsPerOperand,
 			)
 		}
 	}
@@ -109,16 +108,15 @@ func checkModexpInstance[P emulated.FieldParams](api frontend.API, m *modexpCirc
 		utils.Panic("could not generate the API: %v", errAPI)
 	}
 
-	for i := range m.Base {
-		// The limbs are provided by the arithmetization in big-endian order
-		// but the binary API of gnark manages bits in little-endian order. So
-		// we have to account for this when unpacking all the bits of the
-		// operands.
-		posInLimbs := len(m.Base) - i - 1
-		baseLimbs[2*posInLimbs], baseLimbs[2*posInLimbs+1] = bitslice.Partition(api, m.Base[i], params.BitsPerLimb(), bitslice.WithNbDigits(limbSizeBits))
-		exponentLimbs[2*posInLimbs], exponentLimbs[2*posInLimbs+1] = bitslice.Partition(api, m.Exponent[i], params.BitsPerLimb(), bitslice.WithNbDigits(limbSizeBits))
-		modulusLimbs[2*posInLimbs], modulusLimbs[2*posInLimbs+1] = bitslice.Partition(api, m.Modulus[i], params.BitsPerLimb(), bitslice.WithNbDigits(limbSizeBits))
-		resultLimbs[2*posInLimbs], resultLimbs[2*posInLimbs+1] = bitslice.Partition(api, m.Result[i], params.BitsPerLimb(), bitslice.WithNbDigits(limbSizeBits))
+	// The limbs are provided by the arithmetization in big-endian order
+	// but the binary API of gnark manages bits in little-endian order.
+	posInLimbs := params.NbLimbs()
+	for i := range params.NbLimbs() {
+		posInLimbs -= 1
+		baseLimbs[posInLimbs] = m.Base[i]
+		exponentLimbs[posInLimbs] = m.Exponent[i]
+		modulusLimbs[posInLimbs] = m.Modulus[i]
+		resultLimbs[posInLimbs] = m.Result[i]
 	}
 
 	var (

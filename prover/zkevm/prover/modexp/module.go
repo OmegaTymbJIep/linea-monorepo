@@ -8,17 +8,16 @@ import (
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/plonk"
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/projection"
 	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
-	"github.com/consensys/linea-monorepo/prover/protocol/variables"
 	"github.com/consensys/linea-monorepo/prover/protocol/wizard"
 	sym "github.com/consensys/linea-monorepo/prover/symbolic"
 	"github.com/consensys/linea-monorepo/prover/utils"
 )
 
 const (
-	// numRowsPerOperand is the number of rows needed to represent a single operand
+	// numLimbsPerOperand is the number of rows needed to represent a single operand
 	// in the MODEXP module. The operands max size is 4096 bits (Large instance),
 	// thus to put into the KoalaBear field we need 4096/30 = 137 limbs, 30 bits each.
-	numRowsPerOperand = 137
+	numLimbsPerOperand = 137
 
 	// numLimbsPerSmallOperand is the number of limbs needed to represent a single
 	// operand in the small instance of the modexp module. The small instance is
@@ -28,7 +27,7 @@ const (
 
 	// modexpNumRowsPerInstance is the number of rows present in the MODEXP module
 	// to represent a single instance.
-	modexpNumRowsPerInstance = numRowsPerOperand * 4
+	modexpNumRowsPerInstance = numLimbsPerOperand * 4
 
 	// mostSignificantLimbRange is the maximum value that the most significant
 	// limb of the modexp operand can take. In both cases (small and large instances)
@@ -69,6 +68,10 @@ type Module struct {
 	// limb of every operand. The column is precomputed because all Modexp provided
 	// by the arithmetization have exactly the same layout.
 	MostSignifLimbIndicator ifaces.Column
+	// PeriodicSampleIndicator is a precomputed column marking with a 1 the first
+	// row of every modexp instance. The column is precomputed because all Modexp
+	// provided by the arithmetization have exactly the same layout.
+	PeriodicSampleIndicator ifaces.Column
 	// ToSmallCirc and ToLargeCirc are indicator columns marking with a 1 the
 	// positions of limbs corresponding to public inputs of (respectely) the
 	// small and the large circuit.
@@ -107,6 +110,8 @@ func newModule(comp *wizard.CompiledIOP, input Input) *Module {
 			IsSmall:                comp.InsertCommit(0, "MODEXP_IS_SMALL", size),
 			IsLarge:                comp.InsertCommit(0, "MODEXP_IS_LARGE", size),
 			LsbIndicator:           comp.InsertPrecomputed("MODEXP_LSB_INDICATOR", lsbIndicatorValue(size)),
+			PeriodicSampleIndicator: comp.InsertPrecomputed("MODEXP_PERIODIC_SAMPLE_INDICATOR",
+				periodicSampleIndicatorValue(size)),
 			MostSignifLimbIndicator: comp.InsertPrecomputed("MODEXP_LSB_MOST_SIGNIF_LIMB_INDICATOR",
 				mostLimbIndicatorValue(size)),
 			ToSmallCirc: comp.InsertCommit(0, "MODEXP_TO_SMALL_CIRC", size),
@@ -118,6 +123,7 @@ func newModule(comp *wizard.CompiledIOP, input Input) *Module {
 	mod.csIsActive(comp)
 	mod.csIsSmallAndLarge(comp)
 	mod.csToCirc(comp)
+	mod.csLimbsRange(comp)
 
 	projection.InsertProjection(
 		comp,
@@ -170,7 +176,21 @@ func (mod *Module) WithCircuit(comp *wizard.CompiledIOP, options ...plonk.Option
 func lsbIndicatorValue(size int) smartvectors.SmartVector {
 	resSlice := make([]field.Element, size)
 	for i := range resSlice {
-		if i%numRowsPerOperand >= numRowsPerOperand-numLimbsPerSmallOperand {
+		if i%numLimbsPerOperand >= numLimbsPerOperand-numLimbsPerSmallOperand {
+			resSlice[i].SetOne()
+		}
+	}
+	return smartvectors.NewRegular(resSlice)
+}
+
+// periodicSampleIndicatorValue returns the smartvector corresponding to the
+// given size. It ocnstructs a vector that contains 1 every modexpNumRowsPerInstance
+// elements, inidicating the start of a new modexp instance. The behavior is
+// similar to the variables.NewPeriodicSample, but the period isn't power of 2.
+func periodicSampleIndicatorValue(size int) smartvectors.SmartVector {
+	resSlice := make([]field.Element, size)
+	for i := range resSlice {
+		if i%modexpNumRowsPerInstance == 0 {
 			resSlice[i].SetOne()
 		}
 	}
@@ -184,12 +204,12 @@ func lsbIndicatorValue(size int) smartvectors.SmartVector {
 func mostLimbIndicatorValue(size int) smartvectors.SmartVector {
 	resSlice := make([]field.Element, size)
 
-	for i := 0; i < size; i += numRowsPerOperand {
+	for i := 0; i < size; i += numLimbsPerOperand {
 		resSlice[i].SetOne()
 	}
 
-	firstMostSignificantLimb := numRowsPerOperand - numLimbsPerSmallOperand - 1
-	for i := firstMostSignificantLimb; i < size; i += numRowsPerOperand {
+	firstMostSignificantLimb := numLimbsPerOperand - numLimbsPerSmallOperand - 1
+	for i := firstMostSignificantLimb; i < size; i += numLimbsPerOperand {
 		resSlice[i].SetOne()
 	}
 
@@ -255,7 +275,7 @@ func (mod *Module) csIsSmallAndLarge(comp *wizard.CompiledIOP) {
 		0,
 		"MODEXP_IS_SMALL_CONSTANT_BY_SEGMENT",
 		sym.Mul(
-			sym.Sub(1, variables.NewPeriodicSample(modexpNumRowsPerInstance, 0)),
+			sym.Sub(1, mod.PeriodicSampleIndicator),
 			sym.Sub(mod.IsSmall, column.Shift(mod.IsSmall, -1)),
 		),
 	)
@@ -278,27 +298,6 @@ func (mod *Module) csIsSmallAndLarge(comp *wizard.CompiledIOP) {
 			sym.Sub(1, mod.LsbIndicator),
 		),
 	)
-
-	//
-	// The constraints below ensures that the most significant limb of the
-	// operands does not exceed 16 bytes. This is necessary because using
-	// 30 bit limbs one will have a 14 bit overhead in the most significant
-	// limb (in case of 256 and 4096 bits operands), so we need to check
-	// that they aren't used.
-	//
-
-	mostSignifLimbCol := expr_handle.ExprHandle(
-		comp,
-		sym.Mul(mod.Limbs, mod.MostSignifLimbIndicator),
-		"MODEXP_SMALL_RANGE_MOST_SIGNIFICANT_LIMB",
-	)
-
-	comp.InsertRange(
-		0,
-		"MODEXP_SMALL_RANGE_MOST_SIGNIFICANT_LIMB",
-		mostSignifLimbCol,
-		mostSignificantLimbRange,
-	)
 }
 
 // csToCirc ensures the well-construction of ant.ToSmallCirc
@@ -320,6 +319,36 @@ func (mod *Module) csToCirc(comp *wizard.CompiledIOP) {
 	// NB: We set ToLargeCirc = IsLarge as these to indicator coincidates
 	// so there is no need to add extra constraints.
 	//
+}
+
+// csLimbsRange constrains the limbs of the modexp module
+func (mod *Module) csLimbsRange(comp *wizard.CompiledIOP) {
+	//
+	// The constraints below ensures that the most significant limb of the
+	// operands does not exceed 16 bytes. This is necessary because using
+	// 30 bit limbs one will have a 14 bit overhead in the most significant
+	// limb (in case of 256 and 4096 bits operands), so we need to check
+	// that they aren't used.
+	//
+
+	msli := mod.MostSignifLimbIndicator
+	smsli := column.Shift(msli, numLimbsPerSmallOperand-numLimbsPerOperand)
+
+	// results in 0 if it is a large instance and the most significant limb is set.
+	smallInLargeCheck := sym.Sub(1, sym.Mul(mod.IsLarge, sym.Mul(msli, sym.Sub(1, smsli))))
+
+	mostSignifLimbCol := expr_handle.ExprHandle(
+		comp,
+		sym.Mul(mod.Limbs, msli, smallInLargeCheck),
+		"MODEXP_MOST_SIGNIFICANT_LIMB",
+	)
+
+	comp.InsertRange(
+		0,
+		"MODEXP_RANGE_MOST_SIGNIFICANT_LIMB",
+		mostSignifLimbCol,
+		mostSignificantLimbRange,
+	)
 }
 
 // mustBeBinary constraints c to be binary
