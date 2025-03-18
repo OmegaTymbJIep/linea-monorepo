@@ -4,32 +4,41 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"math/rand/v2"
+	"math/rand"
 
 	"github.com/consensys/gnark/std/math/emulated/emparams"
 	"github.com/consensys/linea-monorepo/prover/backend/files"
 )
 
 func main() {
+	writeDir := "./"
 
 	for _, tcase := range testCases {
-		f := files.MustOverwrite("./" + tcase.name + "_input.csv")
+		// Generate the input CSV file
+		f := files.MustOverwrite(writeDir + tcase.name + "_input.csv")
 		dumpAsCsv(f, tcase.tab)
+		f.Close()
+
+		// Generate the module CSV file
+		f = files.MustOverwrite(writeDir + tcase.name + "_module.csv")
+		dumpModuleAsCsv(f, tcase.tab, !tcase.large)
 		f.Close()
 	}
 }
 
 var testCases = []struct {
-	name string
-	tab  [][]*big.Int
+	name  string
+	tab   [][]*big.Int
+	large bool
 }{
 	{
-		name: "single_256_bits",
+		name:  "single_256_bits",
+		large: false,
 		tab: func() [][]*big.Int {
 
 			var (
 				tab  = make([][]*big.Int, 5)
-				rng  = rand.New(rand.NewChaCha8([32]byte{}))
+				rng  = rand.New(rand.NewSource(42))
 				inst = createRandomModexp(rng, false)
 			)
 
@@ -38,12 +47,13 @@ var testCases = []struct {
 		}(),
 	},
 	{
-		name: "single_4096_bits",
+		name:  "single_4096_bits",
+		large: true,
 		tab: func() [][]*big.Int {
 
 			var (
 				tab  = make([][]*big.Int, 5)
-				rng  = rand.New(rand.NewChaCha8([32]byte{}))
+				rng  = rand.New(rand.NewSource(43))
 				inst = createRandomModexp(rng, true)
 			)
 
@@ -77,28 +87,40 @@ func dumpAsCsv(w io.Writer, tab [][]*big.Int) {
 	fmt.Fprintf(w, "LIMBS,IS_MODEXP_BASE,IS_MODEXP_EXPONENT,IS_MODEXP_MODULUS,IS_MODEXP_RESULT\n")
 
 	for i := range tab[0] {
-		fmt.Fprintf(w, "0x%v,%v,%v,%v,%v\n", tab[0][i].Text(16), tab[1][i].String(), tab[2][i].String(), tab[3][i].String(), tab[4][i].String())
+		hexStr := fmt.Sprintf("0x%08x", tab[0][i])
+		fmt.Fprintf(w, "%v,%v,%v,%v,%v\n", hexStr, tab[1][i].String(), tab[2][i].String(), tab[3][i].String(), tab[4][i].String())
 	}
 }
 
-func pushFillerToInput(tab [][]*big.Int, rng *rand.Rand, numRow int) {
+func dumpModuleAsCsv(w io.Writer, tab [][]*big.Int, isSmall bool) {
+	fmt.Fprintf(w, "MODEXP_LIMBS,MODEXP_IS_ACTIVE,MODEXP_IS_SMALL,MODEXP_IS_LARGE,MODEXP_TO_SMALL_CIRC\n")
 
-	maxValue := emparams.Mod1e256{}.Modulus()
+	for i := range tab[0] {
+		hexStr := fmt.Sprintf("0x%08x", tab[0][i])
+		isNonZero := tab[0][i].Sign() > 0
+		toSmallCirc := 0
 
-	for i := 0; i < numRow; i++ {
+		if isSmall && isNonZero {
+			toSmallCirc = 1
+		}
 
-		tab[0] = append(tab[0], new(big.Int).Rand(rng, maxValue))
-		tab[1] = append(tab[1], &big.Int{})
-		tab[2] = append(tab[2], &big.Int{})
-		tab[3] = append(tab[3], &big.Int{})
-		tab[4] = append(tab[4], &big.Int{})
+		isSmallValue := 0
+		isLargeValue := 0
+		if isSmall {
+			isSmallValue = 1
+		} else {
+			isLargeValue = 1
+		}
+
+		fmt.Fprintf(w, "%v,%v,%v,%v,%v\n",
+			hexStr, 1, isSmallValue, isLargeValue, toSmallCirc)
 	}
 }
 
 func pushModexpToInput(inst [4]*big.Int, tab [][]*big.Int) {
 
 	var (
-		limbs = splitIn32LimbsOf128Bits(inst[0])
+		limbs = splitInto30BitLimbs(inst[0])
 		zero  = &big.Int{}
 		one   = big.NewInt(1)
 	)
@@ -111,7 +133,7 @@ func pushModexpToInput(inst [4]*big.Int, tab [][]*big.Int) {
 		tab[4] = append(tab[4], zero)
 	}
 
-	limbs = splitIn32LimbsOf128Bits(inst[1])
+	limbs = splitInto30BitLimbs(inst[1])
 
 	for i := range limbs {
 		tab[0] = append(tab[0], limbs[i])
@@ -121,7 +143,7 @@ func pushModexpToInput(inst [4]*big.Int, tab [][]*big.Int) {
 		tab[4] = append(tab[4], zero)
 	}
 
-	limbs = splitIn32LimbsOf128Bits(inst[2])
+	limbs = splitInto30BitLimbs(inst[2])
 
 	for i := range limbs {
 		tab[0] = append(tab[0], limbs[i])
@@ -131,7 +153,7 @@ func pushModexpToInput(inst [4]*big.Int, tab [][]*big.Int) {
 		tab[4] = append(tab[4], zero)
 	}
 
-	limbs = splitIn32LimbsOf128Bits(inst[3])
+	limbs = splitInto30BitLimbs(inst[3])
 
 	for i := range limbs {
 		tab[0] = append(tab[0], limbs[i])
@@ -142,18 +164,42 @@ func pushModexpToInput(inst [4]*big.Int, tab [][]*big.Int) {
 	}
 }
 
-func splitIn32LimbsOf128Bits(x *big.Int) [32]*big.Int {
-
+// splitInto30BitLimbs splits a big integer into limbs of 30 bits each
+// Returns limbs in big-endian order (most significant limb first)
+func splitInto30BitLimbs(x *big.Int) [137]*big.Int {
 	var (
-		res      = [32]*big.Int{}
-		extended = make([]byte, 512)
-		xBytes   = x.Bytes()
+		res       = [137]*big.Int{}
+		mask      = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 30), big.NewInt(1)) // 2^30 - 1
+		xCopy     = new(big.Int).Set(x)
+		bitCount  = x.BitLen()
+		limbCount = (bitCount + 29) / 30 // Ceiling of bitCount/30
+		limbs     = make([]*big.Int, 0, limbCount)
 	)
 
-	copy(extended[len(extended)-len(xBytes):], xBytes)
+	if x.Sign() == 0 {
+		for i := 0; i < 137; i++ {
+			res[i] = big.NewInt(0)
+		}
+		return res
+	}
 
-	for i := range res {
-		res[i] = new(big.Int).SetBytes(extended[16*i : 16*i+16])
+	for xCopy.Sign() > 0 {
+		limb := new(big.Int).And(xCopy, mask)
+		limbs = append(limbs, limb)
+		xCopy.Rsh(xCopy, 30)
+	}
+
+	for i := 0; i < len(limbs)/2; i++ {
+		limbs[i], limbs[len(limbs)-1-i] = limbs[len(limbs)-1-i], limbs[i]
+	}
+
+	offset := 137 - len(limbs)
+	for i := 0; i < offset; i++ {
+		res[i] = big.NewInt(0)
+	}
+
+	for i := 0; i < len(limbs); i++ {
+		res[i+offset] = limbs[i]
 	}
 
 	return res
