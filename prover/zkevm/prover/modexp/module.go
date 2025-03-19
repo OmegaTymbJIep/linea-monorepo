@@ -113,7 +113,7 @@ func newModule(comp *wizard.CompiledIOP, input Input) *Module {
 			PeriodicSampleIndicator: comp.InsertPrecomputed("MODEXP_PERIODIC_SAMPLE_INDICATOR",
 				periodicSampleIndicatorValue(size)),
 			MostSignifLimbIndicator: comp.InsertPrecomputed("MODEXP_LSB_MOST_SIGNIF_LIMB_INDICATOR",
-				mostLimbIndicatorValue(size)),
+				mostSignifLimbIndicatorValue(size)),
 			ToSmallCirc: comp.InsertCommit(0, "MODEXP_TO_SMALL_CIRC", size),
 		}
 	)
@@ -197,11 +197,11 @@ func periodicSampleIndicatorValue(size int) smartvectors.SmartVector {
 	return smartvectors.NewRegular(resSlice)
 }
 
-// mostLimbIndicatorValue creates a smartvector where the elements at positions
+// mostSignifLimbIndicatorValue creates a smartvector where the elements at positions
 // corresponding to the most significant limb of each operand set to 1. These
 // positions occur every 137 elements starting from the 0 position and starting
 // from the 128 (137 - 9) position.
-func mostLimbIndicatorValue(size int) smartvectors.SmartVector {
+func mostSignifLimbIndicatorValue(size int) smartvectors.SmartVector {
 	resSlice := make([]field.Element, size)
 
 	for i := 0; i < size; i += numLimbsPerOperand {
