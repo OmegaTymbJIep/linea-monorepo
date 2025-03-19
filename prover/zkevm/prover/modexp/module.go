@@ -334,12 +334,9 @@ func (mod *Module) csLimbsRange(comp *wizard.CompiledIOP) {
 	msli := mod.MostSignifLimbIndicator
 	smsli := column.Shift(msli, numLimbsPerSmallOperand-numLimbsPerOperand)
 
-	// results in 0 if it is a large instance and the most significant limb is set.
-	smallInLargeCheck := sym.Sub(1, sym.Mul(mod.IsLarge, sym.Mul(msli, sym.Sub(1, smsli))))
-
 	mostSignifLimbCol := expr_handle.ExprHandle(
 		comp,
-		sym.Mul(mod.Limbs, msli, smallInLargeCheck),
+		sym.Mul(mod.Limbs, msli, sym.Sub(1, sym.Mul(mod.IsLarge, sym.Sub(1, smsli)))),
 		"MODEXP_MOST_SIGNIFICANT_LIMB",
 	)
 
