@@ -4,7 +4,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/evmprecompiles"
 	"github.com/consensys/gnark/std/math/emulated"
-	emparams "github.com/consensys/linea-monorepo/prover/maths/field/emulated"
+	"github.com/consensys/linea-monorepo/prover/maths/field/emulated/emparams"
 	"github.com/consensys/linea-monorepo/prover/utils"
 )
 

@@ -1,6 +1,9 @@
-package emulated
+package emparams
 
 import "math/big"
+
+// NbBitsPerLimb is the number of bits in a single limb.
+const NbBitsPerLimb = 30
 
 // Mod1e4096 provides type parametrization for emulated arithmetic over KoalaBear field:
 //   - limbs: 137
@@ -14,7 +17,7 @@ import "math/big"
 type Mod1e4096 struct{}
 
 func (Mod1e4096) NbLimbs() uint     { return 137 }
-func (Mod1e4096) BitsPerLimb() uint { return 30 }
+func (Mod1e4096) BitsPerLimb() uint { return NbBitsPerLimb }
 func (Mod1e4096) IsPrime() bool     { return false }
 func (Mod1e4096) Modulus() *big.Int {
 	val, _ := new(big.Int).SetString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16)
@@ -33,7 +36,7 @@ func (Mod1e4096) Modulus() *big.Int {
 type Mod1e256 struct{}
 
 func (Mod1e256) NbLimbs() uint     { return 9 }
-func (Mod1e256) BitsPerLimb() uint { return 30 }
+func (Mod1e256) BitsPerLimb() uint { return NbBitsPerLimb }
 func (Mod1e256) IsPrime() bool     { return false }
 func (Mod1e256) Modulus() *big.Int {
 	val, _ := new(big.Int).SetString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16)
