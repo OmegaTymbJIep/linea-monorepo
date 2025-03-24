@@ -1,6 +1,7 @@
 package sw_bn254
 
 import (
+	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -20,6 +21,14 @@ type Scalar = emulated.Element[emparams.BN254Fr]
 // fields.
 func Curve(api frontend.API) (*sw_emulated.Curve[emparams.BN254Fp, emparams.BN254Fr], error) {
 	return sw_emulated.New[emparams.BN254Fp, emparams.BN254Fr](api, sw_emulated.GetBN254Params())
+}
+
+// NewG1Affine allocates a witness from the native G1 element and returns it.
+func NewG1Affine(v bn254.G1Affine) G1Affine {
+	return G1Affine{
+		X: emulated.ValueOf[BaseField](v.X),
+		Y: emulated.ValueOf[BaseField](v.Y),
+	}
 }
 
 // ScalarField is the [emulated.FieldParams] implementation of the curve scalar field.
