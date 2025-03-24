@@ -1,6 +1,7 @@
 package ecpair
 
 import (
+	"github.com/consensys/linea-monorepo/prover/maths/field/emulated/emparams"
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/plonk"
 	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
 	"github.com/consensys/linea-monorepo/prover/protocol/wizard"
@@ -23,9 +24,9 @@ const (
 )
 
 const (
-	nbG1Limbs = 4
-	nbG2Limbs = 8
-	nbGtLimbs = 24
+	nbG1Limbs = 2 * emparams.NbLimbsPerBn254Element
+	nbG2Limbs = 4 * emparams.NbLimbsPerBn254Element
+	nbGtLimbs = 12 * emparams.NbLimbsPerBn254Element
 )
 
 // ECPair represents the constraints for proving the ECPAIR precompile. It is composed of:
@@ -74,7 +75,7 @@ func NewECPairZkEvm(comp *wizard.CompiledIOP, limits *Limits) *ECPair {
 			CsG2Membership:    comp.Columns.GetHandle("ecdata.CIRCUIT_SELECTOR_G2_MEMBERSHIP"),
 		},
 	).WithG2MembershipCircuit(comp).
-		WithPairingCircuit(comp, plonk.WithRangecheck(16, 6, true))
+		WithPairingCircuit(comp, plonk.WithRangecheck(15, 2, true))
 }
 
 func newECPair(comp *wizard.CompiledIOP, limits *Limits, ecSource *ECPairSource) *ECPair {
