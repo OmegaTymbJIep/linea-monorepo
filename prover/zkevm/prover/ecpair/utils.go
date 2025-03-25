@@ -1,75 +1,91 @@
 package ecpair
 
 import (
+	"math/big"
+
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fp"
 	"github.com/consensys/linea-monorepo/prover/maths/field"
+	"github.com/consensys/linea-monorepo/prover/maths/field/emulated/emparams"
 	"github.com/consensys/linea-monorepo/prover/utils"
 )
 
-func convG1WizardToGnark(limbs [nbG1Limbs]field.Element) bn254.G1Affine {
-	var res bn254.G1Affine
-	var buf [fp.Bytes]byte
+// recomposeFp recomposes a big.Int from a slice of 30 bit limbs.
+func recomposeFp(limbs []field.Element, res *fp.Element) {
+	var buf, resBigInt big.Int
 
-	copyTo := func(i int, dst *fp.Element) {
-		l0 := limbs[i].Bytes()
-		l1 := limbs[i+1].Bytes()
-		copy(buf[0:16], l0[16:32])
-		copy(buf[16:32], l1[16:32])
-		dst.SetBytes(buf[:])
+	for _, limb := range limbs {
+		resBigInt.Lsh(&resBigInt, emparams.NbBitsPerLimb)
+		resBigInt.Add(&resBigInt, limb.BigInt(&buf))
 	}
-	copyTo(0, &res.X)
-	copyTo(2, &res.Y)
 
-	return res
+	res.SetBigInt(&resBigInt)
 }
 
 func convG2WizardToGnark(limbs [nbG2Limbs]field.Element) bn254.G2Affine {
 	var res bn254.G2Affine
-	var buf [fp.Bytes]byte
 
-	copyTo := func(i int, dst *fp.Element) {
-		l0 := limbs[i].Bytes()
-		l1 := limbs[i+1].Bytes()
-		copy(buf[0:16], l0[16:32])
-		copy(buf[16:32], l1[16:32])
-		dst.SetBytes(buf[:])
-	}
-	// arithmetization provides G2 coordinates in the following order:
-	//   X_Im, X_Re, Y_Im, Y_Re
-	// but in gnark we expect
-	//   X_Re, X_Im, Y_Re, Y_Im
-	// so we need to swap the limbs.
-	copyTo(0, &res.X.A1)
-	copyTo(2, &res.X.A0)
-	copyTo(4, &res.Y.A1)
-	copyTo(6, &res.Y.A0)
+	recomposeFp(limbs[:emparams.NbLimbsPerBn254Element], &res.X.A1)
+	recomposeFp(limbs[emparams.NbLimbsPerBn254Element:emparams.NbLimbsPerBn254Element*2], &res.X.A0)
+	recomposeFp(limbs[emparams.NbLimbsPerBn254Element:emparams.NbLimbsPerBn254Element*3], &res.Y.A1)
+	recomposeFp(limbs[emparams.NbLimbsPerBn254Element:], &res.Y.A0)
 
 	return res
 }
 
+func convG1WizardToGnark(limbs [nbG1Limbs]field.Element) bn254.G1Affine {
+	var res bn254.G1Affine
+
+	recomposeFp(limbs[:emparams.NbLimbsPerBn254Element], &res.X)
+	recomposeFp(limbs[emparams.NbLimbsPerBn254Element:], &res.Y)
+
+	return res
+}
+
+// decomposeFp decomposes a big.Int into a slice of 30 bit limbs.
+func decomposeFp(input *big.Int, mod *big.Int) []field.Element {
+	var res [emparams.NbLimbsPerBn254Element]field.Element
+
+	var tmp, buf big.Int
+	tmp.Set(input)
+
+	for i := 0; i < len(res); i++ {
+		buf.Mod(&tmp, mod)
+		res[i].SetBigInt(&buf)
+		tmp.Rsh(&tmp, emparams.NbBitsPerLimb)
+	}
+
+	return res[:]
+}
+
 func convGtGnarkToWizard(elem bn254.GT) [nbGtLimbs]field.Element {
 	var res [nbGtLimbs]field.Element
-	var buf [fp.Bytes / 2]byte
 
-	copyTo := func(i int, b [fp.Bytes]byte) {
-		copy(buf[:], b[0:16])
-		res[i].SetBytes(buf[:])
-		copy(buf[:], b[16:32])
-		res[i+1].SetBytes(buf[:])
+	var buf, mod big.Int
+	mod.Lsh(big.NewInt(1), emparams.NbBitsPerLimb)
+
+	copyTo := func(i int, b fp.Element) {
+		b.BigInt(&buf)
+		limbs := decomposeFp(&buf, &mod)
+
+		start := i * emparams.NbLimbsPerBn254Element
+		for j, limb := range limbs {
+			res[start+j] = limb
+		}
 	}
-	copyTo(0, elem.C0.B0.A0.Bytes())
-	copyTo(2, elem.C0.B0.A1.Bytes())
-	copyTo(4, elem.C0.B1.A0.Bytes())
-	copyTo(6, elem.C0.B1.A1.Bytes())
-	copyTo(8, elem.C0.B2.A0.Bytes())
-	copyTo(10, elem.C0.B2.A1.Bytes())
-	copyTo(12, elem.C1.B0.A0.Bytes())
-	copyTo(14, elem.C1.B0.A1.Bytes())
-	copyTo(16, elem.C1.B1.A0.Bytes())
-	copyTo(18, elem.C1.B1.A1.Bytes())
-	copyTo(20, elem.C1.B2.A0.Bytes())
-	copyTo(22, elem.C1.B2.A1.Bytes())
+
+	copyTo(0, elem.C0.B0.A0)
+	copyTo(1, elem.C0.B0.A1)
+	copyTo(2, elem.C0.B1.A0)
+	copyTo(3, elem.C0.B1.A1)
+	copyTo(4, elem.C0.B2.A0)
+	copyTo(5, elem.C0.B2.A1)
+	copyTo(6, elem.C1.B0.A0)
+	copyTo(7, elem.C1.B0.A1)
+	copyTo(8, elem.C1.B1.A0)
+	copyTo(9, elem.C1.B1.A1)
+	copyTo(10, elem.C1.B2.A0)
+	copyTo(11, elem.C1.B2.A1)
 
 	return res
 }
@@ -80,66 +96,276 @@ func inputFillerMillerLoop(circuitInstance, inputIndex int) field.Element {
 	// q = g2 gen
 	// curr = e(p, q)
 	tbl := []string{
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000001",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000001",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000002",
-		"0x198e9393920d483a7260bfb731fb5d25",
-		"0xf1aa493335a9e71297e485b7aef312c2",
-		"0x1800deef121f1e76426a00665e5c4479",
-		"0x674322d4f75edadd46debd5cd992f6ed",
-		"0x090689d0585ff075ec9e99ad690c3395",
-		"0xbc4b313370b38ef355acdadcd122975b",
-		"0x12c85ea5db8c6deb4aab71808dcb408f",
-		"0xe3d1e7690c43d37b4ce6cc0166fa7daa",
-		"0x132504eb4501a5bf6b07af56b7db0fa2",
-		"0xe466d6409233e66e4c91574681ba8566",
-		"0x16edf1040913f3d354676315f5d158d6",
-		"0x1ba6a7369eaac1bc4f0c2d72be31cee2",
-		"0x132b66f5e20b77a759f41f13a5e6b041",
-		"0x2c6112212e6365529f630c85192ad16f",
-		"0x0770c0ea6116b19864141f82724368f7",
-		"0xe62dc0d6b74c6235d06cd152fd8981d2",
-		"0x258c92380ebc5b7819f43f64398a51e1",
-		"0xa120ab1c39458a75df4f071d669f97d1",
-		"0x21268548f1cacec5a8e6204eaead3b3f",
-		"0xf317a4e81f0629d828e9b62d1a4e2c5e",
-		"0x0f326699d970d1caa67566242f7e890d",
-		"0xe6209956a9456136d1dc8268abbb37ed",
-		"0x229254d20275bc1ceb9160311563e534",
-		"0x219446c3d731aefb89d34d10fff95c96",
-		"0x22a66075e8f04e7efd62a63433a2d91d",
-		"0x2e5c673334cacb9339aaf16706d99466",
-		"0x04278698c016ccc6a0ed44a6bd596c36",
-		"0xfd06e50ce5e2ed5605f9f606a88ce821",
-		"0x0b02989b4da34883f8736e7cf91e7ffb",
-		"0x573732553ebd0ea9e9719e6d7ad47418",
-		"0x12f11cc371163663d21b72b6f86808cb",
-		"0x6481e1abded4465c6e15feb7a389480b",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000001",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000001",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000002",
+		"0x0000198e",
+		"0x24e4e483",
+		"0x1483a726",
+		"0x02fedcc7",
+		"0x3b5d25f1",
+		"0x2a924ccd",
+		"0x1a9e7129",
+		"0x1f9216de",
+		"0x2ef312c2",
+		"0x00001800",
+		"0x37bbc487",
+		"0x31e76426",
+		"0x28019979",
+		"0x1c447967",
+		"0x10c8b53d",
+		"0x35edadd4",
+		"0x1b7af573",
+		"0x1992f6ed",
+		"0x00000906",
+		"0x22741617",
+		"0x3f075ec9",
+		"0x3a66b5a4",
+		"0x0c3395bc",
+		"0x12cc4cdc",
+		"0x0b38ef35",
+		"0x16b36b73",
+		"0x1122975b",
+		"0x000012c8",
+		"0x17a976e3",
+		"0x06deb4aa",
+		"0x2dc60237",
+		"0x0b408fe3",
+		"0x3479da43",
+		"0x043d37b4",
+		"0x339b3005",
+		"0x26fa7daa",
+		"0x00001325",
+		"0x013ad140",
+		"0x1a5bf6b0",
+		"0x1ebd5adf",
+		"0x1b0fa2e4",
+		"0x19b59024",
+		"0x233e66e4",
+		"0x32455d1a",
+		"0x01ba8566",
+		"0x000016ed",
+		"0x3c410244",
+		"0x3f3d3546",
+		"0x1d8c57d7",
+		"0x1158d61b",
+		"0x29a9cda7",
+		"0x2aac1bc4",
+		"0x3c30b5ca",
+		"0x3e31cee2",
+		"0x0000132b",
+		"0x19bd7882",
+		"0x377a759f",
+		"0x107c4e97",
+		"0x26b0412c",
+		"0x1844884b",
+		"0x26365529",
+		"0x3d8c3214",
+		"0x192ad16f",
+		"0x00000770",
+		"0x303a9845",
+		"0x2b198641",
+		"0x107e09c9",
+		"0x0368f7e6",
+		"0x0b7035ad",
+		"0x34c6235d",
+		"0x01b3454b",
+		"0x3d8981d2",
+		"0x0000258c",
+		"0x248e03af",
+		"0x05b7819f",
+		"0x10fd90e6",
+		"0x0a51e1a1",
+		"0x082ac70e",
+		"0x1458a75d",
+		"0x3d3c1c75",
+		"0x269f97d1",
+		"0x00002126",
+		"0x21523c72",
+		"0x2cec5a8e",
+		"0x18813aba",
+		"0x2d3b3ff3",
+		"0x05e93a07",
+		"0x30629d82",
+		"0x23a6d8b4",
+		"0x1a4e2c5e",
+		"0x00000f32",
+		"0x19a6765c",
+		"0x0d1caa67",
+		"0x159890bd",
+		"0x3e890de6",
+		"0x082655aa",
+		"0x1456136d",
+		"0x077209a2",
+		"0x2bbb37ed",
+		"0x00002292",
+		"0x1534809d",
+		"0x1bc1ceb9",
+		"0x0580c455",
+		"0x23e53421",
+		"0x2511b0f5",
+		"0x331aefb8",
+		"0x274d3443",
+		"0x3ff95c96",
+		"0x000022a6",
+		"0x181d7a3c",
+		"0x04e7efd6",
+		"0x0a98d0ce",
+		"0x22d91d2e",
+		"0x1719cccd",
+		"0x0cacb933",
+		"0x26abc59c",
+		"0x06d99466",
+		"0x00000427",
+		"0x21a63005",
+		"0x2ccc6a0e",
+		"0x35129af5",
+		"0x196c36fd",
+		"0x01b94339",
+		"0x1e2ed560",
+		"0x17e7d81a",
+		"0x288ce821",
+		"0x00000b02",
+		"0x2626d368",
+		"0x34883f87",
+		"0x0db9f3e4",
+		"0x1e7ffb57",
+		"0x0dcc954f",
+		"0x2bd0ea9e",
+		"0x25c679b5",
+		"0x3ad47418",
+		"0x000012f1",
+		"0x0730dc45",
+		"0x23663d21",
+		"0x2dcadbe1",
+		"0x2808cb64",
+		"0x20786af7",
+		"0x2d4465c6",
+		"0x3857fade",
+		"0x2389480b",
 	}
 	var res field.Element
 	_, err := res.SetString(tbl[inputIndex%(nbG1Limbs+nbG2Limbs+2*nbGtLimbs)])
@@ -154,44 +380,177 @@ func inputFillerFinalExp(circuitInstance, inputIndex int) field.Element {
 	// inputs e(p, q)
 	// result e(-p, q) * e(p, q) == 1
 	tbl := []string{
-		"0x132504eb4501a5bf6b07af56b7db0fa2",
-		"0xe466d6409233e66e4c91574681ba8566",
-		"0x16edf1040913f3d354676315f5d158d6",
-		"0x1ba6a7369eaac1bc4f0c2d72be31cee2",
-		"0x132b66f5e20b77a759f41f13a5e6b041",
-		"0x2c6112212e6365529f630c85192ad16f",
-		"0x0770c0ea6116b19864141f82724368f7",
-		"0xe62dc0d6b74c6235d06cd152fd8981d2",
-		"0x258c92380ebc5b7819f43f64398a51e1",
-		"0xa120ab1c39458a75df4f071d669f97d1",
-		"0x21268548f1cacec5a8e6204eaead3b3f",
-		"0xf317a4e81f0629d828e9b62d1a4e2c5e",
-		"0x2131e7d907c0ce5f11dadf925202cf4f",
-		"0xb160d13abf2c69566a4409ae2cc1c55a",
-		"0x0dd1f9a0debbe40cccbee5856c1d7329",
-		"0x75ed23cd91401b91b24d3f05d883a0b1",
-		"0x0dbdedfcf84151aabaed9f824dde7f40",
-		"0x6925035e33a6fefa02759aafd1a368e1",
-		"0x2c3cc7da211ad3631763010fc427ec26",
-		"0x9a7a8584828edd37362696102ff01526",
-		"0x2561b5d7938e57a5bfdcd7398862d862",
-		"0x404a383c29b4bbe352aeeda95da8892f",
-		"0x1d7331af701b69c5e634d2ff89194f92",
-		"0x32ff88e5899d8430ce0a8d5f34f3b53c",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000001",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000002",
-		"0x198e9393920d483a7260bfb731fb5d25",
-		"0xf1aa493335a9e71297e485b7aef312c2",
-		"0x1800deef121f1e76426a00665e5c4479",
-		"0x674322d4f75edadd46debd5cd992f6ed",
-		"0x090689d0585ff075ec9e99ad690c3395",
-		"0xbc4b313370b38ef355acdadcd122975b",
-		"0x12c85ea5db8c6deb4aab71808dcb408f",
-		"0xe3d1e7690c43d37b4ce6cc0166fa7daa",
-		"0x00000000000000000000000000000000",
-		"0x00000000000000000000000000000001",
+		"0x00001325",
+		"0x013ad140",
+		"0x1a5bf6b0",
+		"0x1ebd5adf",
+		"0x1b0fa2e4",
+		"0x19b59024",
+		"0x233e66e4",
+		"0x32455d1a",
+		"0x01ba8566",
+		"0x000016ed",
+		"0x3c410244",
+		"0x3f3d3546",
+		"0x1d8c57d7",
+		"0x1158d61b",
+		"0x29a9cda7",
+		"0x2aac1bc4",
+		"0x3c30b5ca",
+		"0x3e31cee2",
+		"0x0000132b",
+		"0x19bd7882",
+		"0x377a759f",
+		"0x107c4e97",
+		"0x26b0412c",
+		"0x1844884b",
+		"0x26365529",
+		"0x3d8c3214",
+		"0x192ad16f",
+		"0x00000770",
+		"0x303a9845",
+		"0x2b198641",
+		"0x107e09c9",
+		"0x0368f7e6",
+		"0x0b7035ad",
+		"0x34c6235d",
+		"0x01b3454b",
+		"0x3d8981d2",
+		"0x0000258c",
+		"0x248e03af",
+		"0x05b7819f",
+		"0x10fd90e6",
+		"0x0a51e1a1",
+		"0x082ac70e",
+		"0x1458a75d",
+		"0x3d3c1c75",
+		"0x269f97d1",
+		"0x00002126",
+		"0x21523c72",
+		"0x2cec5a8e",
+		"0x18813aba",
+		"0x2d3b3ff3",
+		"0x05e93a07",
+		"0x30629d82",
+		"0x23a6d8b4",
+		"0x1a4e2c5e",
+		"0x00002131",
+		"0x39f641f0",
+		"0x0ce5f11d",
+		"0x2b7e4948",
+		"0x02cf4fb1",
+		"0x18344eaf",
+		"0x32c69566",
+		"0x291026b8",
+		"0x2cc1c55a",
+		"0x00000dd1",
+		"0x3e6837ae",
+		"0x3e40cccb",
+		"0x3b9615b0",
+		"0x1d732975",
+		"0x3b48f364",
+		"0x1401b91b",
+		"0x0934fc17",
+		"0x1883a0b1",
+		"0x00000dbd",
+		"0x3b7f3e10",
+		"0x151aabae",
+		"0x367e0937",
+		"0x1e7f4069",
+		"0x0940d78c",
+		"0x3a6fefa0",
+		"0x09d66abf",
+		"0x11a368e1",
+		"0x00002c3c",
+		"0x31f68846",
+		"0x2d363176",
+		"0x0c043f10",
+		"0x27ec269a",
+		"0x1ea16120",
+		"0x28edd373",
+		"0x189a5840",
+		"0x2ff01526",
+		"0x00002561",
+		"0x2d75e4e3",
+		"0x257a5bfd",
+		"0x335ce621",
+		"0x22d86240",
+		"0x128e0f0a",
+		"0x1b4bbe35",
+		"0x0abbb6a5",
+		"0x1da8892f",
+		"0x00001d73",
+		"0x0c6bdc06",
+		"0x369c5e63",
+		"0x134bfe24",
+		"0x194f9232",
+		"0x3fe23962",
+		"0x19d8430c",
+		"0x382a357c",
+		"0x34f3b53c",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000001",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000002",
+		"0x0000198e",
+		"0x24e4e483",
+		"0x1483a726",
+		"0x02fedcc7",
+		"0x3b5d25f1",
+		"0x2a924ccd",
+		"0x1a9e7129",
+		"0x1f9216de",
+		"0x2ef312c2",
+		"0x00001800",
+		"0x37bbc487",
+		"0x31e76426",
+		"0x28019979",
+		"0x1c447967",
+		"0x10c8b53d",
+		"0x35edadd4",
+		"0x1b7af573",
+		"0x1992f6ed",
+		"0x00000906",
+		"0x22741617",
+		"0x3f075ec9",
+		"0x3a66b5a4",
+		"0x0c3395bc",
+		"0x12cc4cdc",
+		"0x0b38ef35",
+		"0x16b36b73",
+		"0x1122975b",
+		"0x000012c8",
+		"0x17a976e3",
+		"0x06deb4aa",
+		"0x2dc60237",
+		"0x0b408fe3",
+		"0x3479da43",
+		"0x043d37b4",
+		"0x339b3005",
+		"0x26fa7daa",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000000",
+		"0x00000001",
 	}
 	var res field.Element
 	_, err := res.SetString(tbl[inputIndex%(nbG1Limbs+nbG2Limbs+nbGtLimbs+2)])
@@ -204,14 +563,42 @@ func inputFillerFinalExp(circuitInstance, inputIndex int) field.Element {
 func inputFillerG2Membership(circuitInstance, inputIndex int) field.Element {
 	// g2 generator
 	tbl := []string{
-		"0x198e9393920d483a7260bfb731fb5d25",
-		"0xf1aa493335a9e71297e485b7aef312c2",
-		"0x1800deef121f1e76426a00665e5c4479",
-		"0x674322d4f75edadd46debd5cd992f6ed",
-		"0x090689d0585ff075ec9e99ad690c3395",
-		"0xbc4b313370b38ef355acdadcd122975b",
-		"0x12c85ea5db8c6deb4aab71808dcb408f",
-		"0xe3d1e7690c43d37b4ce6cc0166fa7daa",
+		"0x0000198e",
+		"0x24e4e483",
+		"0x1483a726",
+		"0x02fedcc7",
+		"0x3b5d25f1",
+		"0x2a924ccd",
+		"0x1a9e7129",
+		"0x1f9216de",
+		"0x2ef312c2",
+		"0x00001800",
+		"0x37bbc487",
+		"0x31e76426",
+		"0x28019979",
+		"0x1c447967",
+		"0x10c8b53d",
+		"0x35edadd4",
+		"0x1b7af573",
+		"0x1992f6ed",
+		"0x00000906",
+		"0x22741617",
+		"0x3f075ec9",
+		"0x3a66b5a4",
+		"0x0c3395bc",
+		"0x12cc4cdc",
+		"0x0b38ef35",
+		"0x16b36b73",
+		"0x1122975b",
+		"0x000012c8",
+		"0x17a976e3",
+		"0x06deb4aa",
+		"0x2dc60237",
+		"0x0b408fe3",
+		"0x3479da43",
+		"0x043d37b4",
+		"0x339b3005",
+		"0x26fa7daa",
 		"0x1",
 	}
 	var res field.Element
