@@ -134,23 +134,21 @@ func (c *MultiECMulCircuit) Define(api frontend.API) error {
 		return fmt.Errorf("field emulation: %w", err)
 	}
 
-	// gnark circuit works with 64 bits values, we need to split the 128 bits
-	// values into high and low parts.
 	nbInstances := len(c.Instances)
 	Ps := make([]sw_bn254.G1Affine, nbInstances)
 	Ns := make([]sw_bn254.Scalar, nbInstances)
 	Rs := make([]sw_bn254.G1Affine, nbInstances)
 	for i := range c.Instances {
 		P := sw_bn254.G1Affine{
-			X: *f.NewElement(c.Instances[i].P_X[:]),
-			Y: *f.NewElement(c.Instances[i].P_Y[:]),
+			X: *f.NewElement(reverseEndianness(c.Instances[i].P_X[:])),
+			Y: *f.NewElement(reverseEndianness(c.Instances[i].P_Y[:])),
 		}
 
-		N := *s.NewElement(c.Instances[i].N[:])
+		N := *s.NewElement(reverseEndianness(c.Instances[i].N[:]))
 
 		R := sw_bn254.G1Affine{
-			X: *f.NewElement(c.Instances[i].R_X[:]),
-			Y: *f.NewElement(c.Instances[i].R_Y[:]),
+			X: *f.NewElement(reverseEndianness(c.Instances[i].R_X[:])),
+			Y: *f.NewElement(reverseEndianness(c.Instances[i].R_Y[:])),
 		}
 
 		Ps[i] = P

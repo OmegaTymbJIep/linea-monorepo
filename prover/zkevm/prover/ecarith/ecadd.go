@@ -133,18 +133,18 @@ func (c *MultiECAddCircuit) Define(api frontend.API) error {
 	Rs := make([]sw_bn254.G1Affine, nbInstances)
 	for i := range c.Instances {
 		P := sw_bn254.G1Affine{
-			X: *f.NewElement(c.Instances[i].P_X[:]),
-			Y: *f.NewElement(c.Instances[i].P_Y[:]),
+			X: *f.NewElement(reverseEndianness(c.Instances[i].P_X[:])),
+			Y: *f.NewElement(reverseEndianness(c.Instances[i].P_Y[:])),
 		}
 
 		Q := sw_bn254.G1Affine{
-			X: *f.NewElement(c.Instances[i].Q_X[:]),
-			Y: *f.NewElement(c.Instances[i].Q_Y[:]),
+			X: *f.NewElement(reverseEndianness(c.Instances[i].Q_X[:])),
+			Y: *f.NewElement(reverseEndianness(c.Instances[i].Q_Y[:])),
 		}
 
 		R := sw_bn254.G1Affine{
-			X: *f.NewElement(c.Instances[i].R_X[:]),
-			Y: *f.NewElement(c.Instances[i].R_Y[:]),
+			X: *f.NewElement(reverseEndianness(c.Instances[i].R_X[:])),
+			Y: *f.NewElement(reverseEndianness(c.Instances[i].R_Y[:])),
 		}
 
 		Ps[i] = P
@@ -163,4 +163,18 @@ func (c *MultiECAddCircuit) Define(api frontend.API) error {
 	}
 
 	return nil
+}
+
+// reverseEndianness the limbs are provided by the arithmetization in
+// big-endian order  but the binary API of gnark manages bits in
+// little-endian order.
+func reverseEndianness(limbs []frontend.Variable) []frontend.Variable {
+	nbLimbs := len(limbs)
+	res := make([]frontend.Variable, nbLimbs)
+
+	for i := range limbs {
+		res[i] = limbs[nbLimbs-i-1]
+	}
+
+	return res
 }
