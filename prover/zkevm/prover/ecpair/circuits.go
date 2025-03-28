@@ -25,8 +25,8 @@ type G1ElementWizard struct {
 // ToG1Element converts G1ElementWizard to G1Affine used in circuit
 func (c *G1ElementWizard) ToG1Element(fp *emulated.Field[sw_bn254.BaseField]) sw_bn254.G1Affine {
 	return sw_bn254.G1Affine{
-		X: *fp.NewElement(c.P[:emparams.NbLimbsPerBn254Element]),
-		Y: *fp.NewElement(c.P[emparams.NbLimbsPerBn254Element:]),
+		X: *fp.NewElement(reverseEndianness(c.P[:emparams.NbLimbsPerBn254Element])),
+		Y: *fp.NewElement(reverseEndianness(c.P[emparams.NbLimbsPerBn254Element:])),
 	}
 }
 
@@ -43,12 +43,12 @@ func (c *G2ElementWizard) ToG2Element(fp *emulated.Field[sw_bn254.BaseField]) sw
 	//   X_Re, X_Im, Y_Re, Y_Im
 	// so we need to swap the limbs.
 	QX := fields_bn254.E2{
-		A0: *fp.NewElement(c.Q[emparams.NbLimbsPerBn254Element : emparams.NbLimbsPerBn254Element*2]),
-		A1: *fp.NewElement(c.Q[:emparams.NbLimbsPerBn254Element]),
+		A0: *fp.NewElement(reverseEndianness(c.Q[emparams.NbLimbsPerBn254Element : emparams.NbLimbsPerBn254Element*2])),
+		A1: *fp.NewElement(reverseEndianness(c.Q[:emparams.NbLimbsPerBn254Element])),
 	}
 	QY := fields_bn254.E2{
-		A0: *fp.NewElement(c.Q[emparams.NbLimbsPerBn254Element*3 : emparams.NbLimbsPerBn254Element*4]),
-		A1: *fp.NewElement(c.Q[emparams.NbLimbsPerBn254Element*2 : emparams.NbLimbsPerBn254Element*3]),
+		A0: *fp.NewElement(reverseEndianness(c.Q[emparams.NbLimbsPerBn254Element*3 : emparams.NbLimbsPerBn254Element*4])),
+		A1: *fp.NewElement(reverseEndianness(c.Q[emparams.NbLimbsPerBn254Element*2 : emparams.NbLimbsPerBn254Element*3])),
 	}
 
 	var Q sw_bn254.G2Affine
@@ -68,7 +68,7 @@ func (c *GtElementWizard) ToGtElement(fp *emulated.Field[sw_bn254.BaseField]) sw
 	var e12Tower [12]*fpElement
 
 	for i := 0; i < 12; i++ {
-		e12Tower[i] = fp.NewElement(c.T[emparams.NbLimbsPerBn254Element*i : emparams.NbLimbsPerBn254Element*(i+1)])
+		e12Tower[i] = fp.NewElement(reverseEndianness(c.T[emparams.NbLimbsPerBn254Element*i : emparams.NbLimbsPerBn254Element*(i+1)]))
 	}
 
 	return intoGtNoTower(fp, e12Tower)
@@ -277,4 +277,18 @@ func intoGtNoTower(api *fpField, coordinates [12]*fpElement) sw_bn254.GTEl {
 		A10: *C0B2Y,
 		A11: *C1B2Y,
 	}
+}
+
+// reverseEndianness the limbs are provided by the arithmetization in
+// big-endian order  but the binary API of gnark manages bits in
+// little-endian order.
+func reverseEndianness(limbs []frontend.Variable) []frontend.Variable {
+	nbLimbs := len(limbs)
+	res := make([]frontend.Variable, nbLimbs)
+
+	for i := range limbs {
+		res[i] = limbs[nbLimbs-i-1]
+	}
+
+	return res
 }

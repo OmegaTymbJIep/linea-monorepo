@@ -236,7 +236,7 @@ func (ec *ECPair) csAccumulatorMask(comp *wizard.CompiledIOP) {
 		),
 	)
 
-	// first curr accumulator is 1 when pairID*60-24 = index
+	// first curr accumulator is 1 when pairID*270-108 = index
 	comp.InsertGlobal(
 		roundNr,
 		ifaces.QueryIDf("%v_FIRST_ACC_CURR", nameECPair),
@@ -246,7 +246,7 @@ func (ec *ECPair) csAccumulatorMask(comp *wizard.CompiledIOP) {
 			sym.Sub(
 				sym.Mul(nbG1Limbs+nbG2Limbs+2*nbGtLimbs, ec.UnalignedPairingData.PairID),
 				ec.UnalignedPairingData.Index,
-				24,
+				nbGtLimbs,
 			),
 		),
 	)

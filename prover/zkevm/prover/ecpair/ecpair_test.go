@@ -120,10 +120,10 @@ func testModule(t *testing.T, tc pairingDataTestCase, withPairingCircuit, withG2
 
 			mod = newECPair(build.CompiledIOP, limits, inp)
 			if withPairingCircuit {
-				mod.WithPairingCircuit(build.CompiledIOP, plonk.WithRangecheck(16, 6, false))
+				mod.WithPairingCircuit(build.CompiledIOP, plonk.WithRangecheck(15, 2, false))
 			}
 			if withG2MembershipCircuit {
-				mod.WithG2MembershipCircuit(build.CompiledIOP, plonk.WithRangecheck(16, 6, false))
+				mod.WithG2MembershipCircuit(build.CompiledIOP, plonk.WithRangecheck(15, 2, false))
 			}
 		}, dummy.Compile)
 

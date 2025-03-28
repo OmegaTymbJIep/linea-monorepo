@@ -27,8 +27,8 @@ func convG2WizardToGnark(limbs [nbG2Limbs]field.Element) bn254.G2Affine {
 
 	recomposeFp(limbs[:emparams.NbLimbsPerBn254Element], &res.X.A1)
 	recomposeFp(limbs[emparams.NbLimbsPerBn254Element:emparams.NbLimbsPerBn254Element*2], &res.X.A0)
-	recomposeFp(limbs[emparams.NbLimbsPerBn254Element:emparams.NbLimbsPerBn254Element*3], &res.Y.A1)
-	recomposeFp(limbs[emparams.NbLimbsPerBn254Element:], &res.Y.A0)
+	recomposeFp(limbs[emparams.NbLimbsPerBn254Element*2:emparams.NbLimbsPerBn254Element*3], &res.Y.A1)
+	recomposeFp(limbs[emparams.NbLimbsPerBn254Element*3:], &res.Y.A0)
 
 	return res
 }
@@ -51,7 +51,7 @@ func decomposeFp(input *big.Int, mod *big.Int) []field.Element {
 
 	for i := 0; i < len(res); i++ {
 		buf.Mod(&tmp, mod)
-		res[i].SetBigInt(&buf)
+		res[len(res)-1-i].SetBigInt(&buf)
 		tmp.Rsh(&tmp, emparams.NbBitsPerLimb)
 	}
 
@@ -542,15 +542,8 @@ func inputFillerFinalExp(circuitInstance, inputIndex int) field.Element {
 		"0x043d37b4",
 		"0x339b3005",
 		"0x26fa7daa",
-		"0x00000000",
-		"0x00000000",
-		"0x00000000",
-		"0x00000000",
-		"0x00000000",
-		"0x00000000",
-		"0x00000000",
-		"0x00000000",
-		"0x00000001",
+		"0x0",
+		"0x1",
 	}
 	var res field.Element
 	_, err := res.SetString(tbl[inputIndex%(nbG1Limbs+nbG2Limbs+nbGtLimbs+2)])
