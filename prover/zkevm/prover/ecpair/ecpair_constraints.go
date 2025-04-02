@@ -126,15 +126,14 @@ func (ec *ECPair) csInstanceIDChangeWhenNewInstance(comp *wizard.CompiledIOP) {
 }
 
 func (ec *ECPair) csAccumulatorInit(comp *wizard.CompiledIOP) {
-	// accumulator is set to (1, 0, 0, ..., 0) with 11 zeros. But we work with two limbs per fp element.
+	// accumulator is set to (1, 0, 0, ..., 0) with 11 zeros. But we work with nine limbs per fp element.
 
 	// we omit range checking as the limbs will be projected to the gnark
-	// circuit which already performs range checking for 128 bit limbs.
+	// circuit which already performs range checking for 30 bit limbs.
 
-	// first HI=0, LO=1
-	accLimbSum := sym.Add(ec.UnalignedPairingData.Limb, sym.Sub(column.Shift(ec.UnalignedPairingData.Limb, 1), 1))
-	for i := 2; i < nbGtLimbs; i++ {
-		// rest HI=0, LO=0
+	// Sum of the limbs of the first Gt element
+	accLimbSum := sym.NewVariable(ec.UnalignedPairingData.Limb)
+	for i := 1; i < nbGtLimbs; i++ {
 		accLimbSum = sym.Add(accLimbSum, column.Shift(ec.UnalignedPairingData.Limb, i))
 	}
 
@@ -144,7 +143,7 @@ func (ec *ECPair) csAccumulatorInit(comp *wizard.CompiledIOP) {
 		sym.Mul(
 			ec.UnalignedPairingData.IsActive,
 			ec.UnalignedPairingData.IsFirstLineOfInstance,
-			accLimbSum,
+			sym.Sub(accLimbSum, 1),
 		),
 	)
 }
@@ -222,7 +221,7 @@ func (ec *ECPair) csAccumulatorMask(comp *wizard.CompiledIOP) {
 		ec.UnalignedPairingData.IsAccumulatorInit,
 	})
 
-	// first prev accumulator is 1 when pairID*60 == index
+	// first prev accumulator is 1 when pairID*(nbG1Limbs+nbG2Limbs+2*nbGtLimbs) == index
 	comp.InsertGlobal(
 		roundNr,
 		ifaces.QueryIDf("%v_FIRST_ACC_PREV", nameECPair),
@@ -236,7 +235,7 @@ func (ec *ECPair) csAccumulatorMask(comp *wizard.CompiledIOP) {
 		),
 	)
 
-	// first curr accumulator is 1 when pairID*270-108 = index
+	// first curr accumulator is 1 when pairID*(nbG1Limbs+nbG2Limbs+2*nbGtLimbs)-nbGtLimbs = index
 	comp.InsertGlobal(
 		roundNr,
 		ifaces.QueryIDf("%v_FIRST_ACC_CURR", nameECPair),
