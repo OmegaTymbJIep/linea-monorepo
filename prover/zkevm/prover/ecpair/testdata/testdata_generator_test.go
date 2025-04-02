@@ -12,6 +12,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fp"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"github.com/consensys/linea-monorepo/prover/maths/field/emulated/emparams"
 )
 
 type inputType int
@@ -389,34 +390,22 @@ func (l inputs) generateTestCase() []testCase {
 
 func (ip *inputPair) WriteCSV(w *csv.Writer, ecdataId, ecDataIndex, acc, total int) (newIndex int, err error) {
 	// split G1 and G2 into limbs
-	px := ip.P.X.Bytes()
-	py := ip.P.Y.Bytes()
-	qxre := ip.Q.X.A0.Bytes()
-	qxim := ip.Q.X.A1.Bytes()
-	qyre := ip.Q.Y.A0.Bytes()
-	qyim := ip.Q.Y.A1.Bytes()
+	var limbs []string
 
-	limbs := []string{
-		fmt.Sprintf("0x%x", px[0:16]),
-		fmt.Sprintf("0x%x", px[16:32]),
-		fmt.Sprintf("0x%x", py[0:16]),
-		fmt.Sprintf("0x%x", py[16:32]),
-		fmt.Sprintf("0x%x", qxim[0:16]),
-		fmt.Sprintf("0x%x", qxim[16:32]),
-		fmt.Sprintf("0x%x", qxre[0:16]),
-		fmt.Sprintf("0x%x", qxre[16:32]),
-		fmt.Sprintf("0x%x", qyim[0:16]),
-		fmt.Sprintf("0x%x", qyim[16:32]),
-		fmt.Sprintf("0x%x", qyre[0:16]),
-		fmt.Sprintf("0x%x", qyre[16:32]),
-	}
+	limbs = append(limbs, decomposeFpLimbs(ip.P.X)...)
+	limbs = append(limbs, decomposeFpLimbs(ip.P.Y)...)
+	limbs = append(limbs, decomposeFpLimbs(ip.Q.X.A0)...)
+	limbs = append(limbs, decomposeFpLimbs(ip.Q.X.A1)...)
+	limbs = append(limbs, decomposeFpLimbs(ip.Q.Y.A0)...)
+	limbs = append(limbs, decomposeFpLimbs(ip.Q.Y.A1)...)
+
 	records := make([][]string, len(limbs))
 	var (
 		inputPairSuccess = formatBoolAsInt(ip.MembershipSuccess)
 		ToPairingCircuit = formatBoolAsInt(ip.ToPairingCircuit)
 	)
 	for i, limb := range limbs {
-		isG2Part := i >= 4
+		isG2Part := i >= 2*emparams.NbLimbsPerBn254Element
 		records[i] = []string{
 			strconv.Itoa(ecdataId),
 			limb,
@@ -549,19 +538,24 @@ func TestGenerateECPairTestCases(t *testing.T) {
 		generatedCases = append(generatedCases, generateTestCases(i)...)
 	}
 	for i, tc := range generatedCases {
+		if err := os.MkdirAll("generated", 0755); err != nil {
+			t.Fatal(err)
+		}
+
 		f, err := os.Create(fmt.Sprintf("generated/case-%06d_input.csv", i+1))
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer f.Close()
 		w := csv.NewWriter(f)
-		defer w.Flush()
 		if err := writeHeader(w); err != nil {
 			t.Fatal(err)
 		}
 		if err := tc.WriteCSV(w, i+1); err != nil {
 			t.Fatal(err)
 		}
+
+		f.Close()
+		w.Flush()
 	}
 	fmt.Println(len(generatedCases))
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fp"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark/test"
+	"github.com/consensys/linea-monorepo/prover/maths/field/emulated/emparams"
 )
 
 func TestPairingCheckData(t *testing.T) {
@@ -37,25 +38,11 @@ func TestPairingCheckData(t *testing.T) {
 	assert.NoError(err)
 	assert.True(ok)
 
-	px := p1.X.Bytes()
-	py := p1.Y.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n", px[0:16], px[16:32], py[0:16], py[16:32])
-	qxre := q1.X.A0.Bytes()
-	qxim := q1.X.A1.Bytes()
-	qyre := q1.Y.A0.Bytes()
-	qyim := q1.Y.A1.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n",
-		qxre[0:16], qxre[16:32], qxim[0:16], qxim[16:32], qyre[0:16], qyre[16:32], qyim[0:16], qyim[16:32])
+	printG1Limbs(p1)
+	printG2Limbs(q1)
 
-	p2x := p2.X.Bytes()
-	p2y := p2.Y.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n", p2x[0:16], p2x[16:32], p2y[0:16], p2y[16:32])
-	q2xre := q2.X.A0.Bytes()
-	q2xim := q2.X.A1.Bytes()
-	q2yre := q2.Y.A0.Bytes()
-	q2yim := q2.Y.A1.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n",
-		q2xre[0:16], q2xre[16:32], q2xim[0:16], q2xim[16:32], q2yre[0:16], q2yre[16:32], q2yim[0:16], q2yim[16:32])
+	printG1Limbs(p2)
+	printG2Limbs(q2)
 }
 
 func TestPairingFailingCheckData(t *testing.T) {
@@ -80,25 +67,12 @@ func TestPairingFailingCheckData(t *testing.T) {
 	assert.NoError(err)
 	assert.False(ok)
 
-	px := p.X.Bytes()
-	py := p.Y.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n", px[0:16], px[16:32], py[0:16], py[16:32])
-	qxre := q.X.A0.Bytes()
-	qxim := q.X.A1.Bytes()
-	qyre := q.Y.A0.Bytes()
-	qyim := q.Y.A1.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n",
-		qxre[0:16], qxre[16:32], qxim[0:16], qxim[16:32], qyre[0:16], qyre[16:32], qyim[0:16], qyim[16:32])
+	printG1Limbs(p)
+	printG2Limbs(q)
 
-	p2x := p2.X.Bytes()
-	p2y := p2.Y.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n", p2x[0:16], p2x[16:32], p2y[0:16], p2y[16:32])
-	q2xre := q2.X.A0.Bytes()
-	q2xim := q2.X.A1.Bytes()
-	q2yre := q2.Y.A0.Bytes()
-	q2yim := q2.Y.A1.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n",
-		q2xre[0:16], q2xre[16:32], q2xim[0:16], q2xim[16:32], q2yre[0:16], q2yre[16:32], q2yim[0:16], q2yim[16:32])
+	printG1Limbs(p2)
+	printG2Limbs(q2)
+
 }
 
 func TestAddData(t *testing.T) {
@@ -120,21 +94,11 @@ func TestAddData(t *testing.T) {
 		var r bn254.G1Affine
 		r.Add(&p, &q)
 
-		pxb := p.X.Bytes()
-		pyb := p.Y.Bytes()
-		qxb := q.X.Bytes()
-		qyb := q.Y.Bytes()
-		rxb := r.X.Bytes()
-		ryb := r.Y.Bytes()
 		fmt.Println(i)
-		fmt.Printf("PXHI=0x%x\nPXLO=0x%x\nPYHI=0x%x\nPYLO=0x%x\nQXHI=0x%x\nQXLO=0x%x\nQYHI=0x%x\nQYLO=0x%x\nQXHI=0x%x\nQXLO=0x%x\nRYHI=0x%x\nRYLO=0x%x\n",
-			pxb[0:16], pxb[16:32],
-			pyb[0:16], pyb[16:32],
-			qxb[0:16], qxb[16:32],
-			qyb[0:16], qyb[16:32],
-			rxb[0:16], rxb[16:32],
-			ryb[0:16], ryb[16:32],
-		)
+
+		printG1Limbs(p)
+		printG1Limbs(q)
+		printG1Limbs(r)
 	}
 }
 
@@ -564,12 +528,12 @@ func TestDataValidPairing(t *testing.T) {
 	printP(p3)
 	printQ(q3)
 
-	printPLimbs(p1)
-	printQLimbs(q1)
-	printPLimbs(p2)
-	printQLimbs(q2)
-	printPLimbs(p3)
-	printQLimbs(q3)
+	printG1Limbs(p1)
+	printG2Limbs(q1)
+	printG1Limbs(p2)
+	printG2Limbs(q2)
+	printG1Limbs(p3)
+	printG2Limbs(q3)
 
 	// pairing where result is 1. Four pairs of inputs
 	// e(a, 2b) * e(3a, b) * e(a, 5b) * e(-2a, 5b) == 1
@@ -627,7 +591,7 @@ func TestG2TestData(t *testing.T) {
 	_, err = Q.Y.A1.SetString("0x49fe60975e8c78b7b31a6ed16a338ac8b28cf6a065cfd2ca47e9402882518ba0")
 	assert.NoError(err)
 	assert.False(Q.IsOnCurve())
-	printQLimbs(Q)
+	printG2Limbs(Q)
 
 	// test for a point on curve not in G2
 	_, err = Q.X.A0.SetString("0x07192b9fd0e2a32e3e1caa8e59462b757326d48f641924e6a1d00d66478913eb")
@@ -640,11 +604,11 @@ func TestG2TestData(t *testing.T) {
 	assert.NoError(err)
 	assert.True(Q.IsOnCurve())
 	assert.False(Q.IsInSubGroup())
-	printQLimbs(Q)
+	printG2Limbs(Q)
 
 	// test for a point in G2
 	Q.ScalarMultiplicationBase(big.NewInt(5678))
-	printQLimbs(Q)
+	printG2Limbs(Q)
 }
 
 func TestDummyMillerLoopData(t *testing.T) {
@@ -661,9 +625,9 @@ func TestDummyMillerLoopData(t *testing.T) {
 	one.SetOne()
 	printTLimbs(one)
 	fmt.Println()
-	printPLimbs(p)
+	printG1Limbs(p)
 	fmt.Println()
-	printQLimbs(q)
+	printG2Limbs(q)
 	fmt.Println()
 	printTLimbs(mlres)
 }
@@ -693,9 +657,9 @@ func TestDummyMillerLoopFinalExpData(t *testing.T) {
 	assert.NoError(err)
 	// var one bn254.GT
 	fmt.Println()
-	printPLimbs(p)
+	printG1Limbs(p)
 	fmt.Println()
-	printQLimbs(q)
+	printG2Limbs(q)
 	// fmt.Println()
 	// printTLimbs(mlres)
 }
@@ -706,7 +670,7 @@ func TestDummyG2CheckData(t *testing.T) {
 	_, _, _, q := bn254.Generators()
 	ok := q.IsInSubGroup()
 	assert.True(ok)
-	printQLimbs(q)
+	printG2Limbs(q)
 }
 
 func printP(P bn254.G1Affine) {
@@ -729,37 +693,66 @@ func printQ(Q bn254.G2Affine) {
 	fmt.Printf("ByIm = 0x%x\n", buf[:])
 }
 
-func printPLimbs(P bn254.G1Affine) {
-	px := P.X.Bytes()
-	py := P.Y.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n", px[0:16], px[16:32], py[0:16], py[16:32])
+func printG1Limbs(P bn254.G1Affine) {
+	printFpLimbs(P.X)
+	printFpLimbs(P.Y)
 }
 
-func printQLimbs(Q bn254.G2Affine) {
-	qxre := Q.X.A0.Bytes()
-	qxim := Q.X.A1.Bytes()
-	qyre := Q.Y.A0.Bytes()
-	qyim := Q.Y.A1.Bytes()
-	fmt.Printf("0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n0x%x\n",
-		qxre[0:16], qxre[16:32], qxim[0:16], qxim[16:32], qyre[0:16], qyre[16:32], qyim[0:16], qyim[16:32])
+func printG2Limbs(Q bn254.G2Affine) {
+	printFpLimbs(Q.X.A0)
+	printFpLimbs(Q.X.A1)
+	printFpLimbs(Q.Y.A0)
+	printFpLimbs(Q.Y.A1)
 }
 
 func printTLimbs(T bn254.GT) {
-	for i, bb := range [][32]byte{
-		T.C0.B0.A0.Bytes(),
-		T.C0.B0.A1.Bytes(),
-		T.C0.B1.A0.Bytes(),
-		T.C0.B1.A1.Bytes(),
-		T.C0.B2.A0.Bytes(),
-		T.C0.B2.A1.Bytes(),
-		T.C1.B0.A0.Bytes(),
-		T.C1.B0.A1.Bytes(),
-		T.C1.B1.A0.Bytes(),
-		T.C1.B1.A1.Bytes(),
-		T.C1.B2.A0.Bytes(),
-		T.C1.B2.A1.Bytes(),
-	} {
-		_ = i
-		fmt.Printf("0x%x\n0x%x\n", bb[0:16], bb[16:32])
+	printFpLimbs(T.C0.B0.A0)
+	printFpLimbs(T.C0.B0.A1)
+	printFpLimbs(T.C0.B1.A0)
+	printFpLimbs(T.C0.B1.A1)
+	printFpLimbs(T.C0.B2.A0)
+	printFpLimbs(T.C0.B2.A1)
+	printFpLimbs(T.C1.B0.A0)
+	printFpLimbs(T.C1.B0.A1)
+	printFpLimbs(T.C1.B1.A0)
+	printFpLimbs(T.C1.B1.A1)
+	printFpLimbs(T.C1.B2.A0)
+	printFpLimbs(T.C1.B2.A1)
+}
+
+func printFpLimbs(inputRaw fp.Element) {
+	limbs := decomposeFpLimbs(inputRaw)
+
+	for _, limb := range limbs {
+		fmt.Println(limb)
 	}
+}
+
+func decomposeFpLimbs(inputRaw fp.Element) []string {
+	nbBits := uint(emparams.NbBitsPerLimb)
+	nbLimbs := emparams.NbLimbsPerBn254Element
+
+	var base, input, buf big.Int
+	inputRaw.BigInt(&input)
+
+	res := make([]string, nbLimbs)
+	(&base).Lsh(big.NewInt(1), nbBits)
+	for i := int(nbLimbs) - 1; i >= 0; i-- {
+		(&buf).Mod(&input, &base)
+		input.Rsh(&input, nbBits)
+
+		res[i] = bigIntAsPadedHex(&buf, nbBits)
+	}
+
+	return res
+}
+
+func bigIntAsPadedHex(n *big.Int, nbBits uint) string {
+	res := n.Text(16)
+
+	for len(res) < int(nbBits/4) {
+		res = fmt.Sprintf("0%s", res)
+	}
+
+	return fmt.Sprintf("0x%s", res)
 }
