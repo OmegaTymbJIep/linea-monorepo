@@ -394,10 +394,10 @@ func (ip *inputPair) WriteCSV(w *csv.Writer, ecdataId, ecDataIndex, acc, total i
 
 	limbs = append(limbs, decomposeFpLimbs(ip.P.X)...)
 	limbs = append(limbs, decomposeFpLimbs(ip.P.Y)...)
-	limbs = append(limbs, decomposeFpLimbs(ip.Q.X.A0)...)
 	limbs = append(limbs, decomposeFpLimbs(ip.Q.X.A1)...)
-	limbs = append(limbs, decomposeFpLimbs(ip.Q.Y.A0)...)
+	limbs = append(limbs, decomposeFpLimbs(ip.Q.X.A0)...)
 	limbs = append(limbs, decomposeFpLimbs(ip.Q.Y.A1)...)
+	limbs = append(limbs, decomposeFpLimbs(ip.Q.Y.A0)...)
 
 	records := make([][]string, len(limbs))
 	var (

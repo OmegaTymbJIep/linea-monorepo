@@ -750,7 +750,7 @@ func decomposeFpLimbs(inputRaw fp.Element) []string {
 func bigIntAsPadedHex(n *big.Int, nbBits uint) string {
 	res := n.Text(16)
 
-	for len(res) < int(nbBits/4) {
+	for len(res) < int((nbBits+3)/4) {
 		res = fmt.Sprintf("0%s", res)
 	}
 
