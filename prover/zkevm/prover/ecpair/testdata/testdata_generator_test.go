@@ -554,8 +554,8 @@ func TestGenerateECPairTestCases(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		f.Close()
 		w.Flush()
+		f.Close()
 	}
 	fmt.Println(len(generatedCases))
 }
