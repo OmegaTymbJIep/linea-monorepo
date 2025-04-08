@@ -66,7 +66,7 @@ func TestAddress(t *testing.T) {
 
 	proof := wizard.Prove(compiled, func(run *wizard.ProverRuntime) {
 
-		testdata.GenerateAndAssignGenDataModule(run, &gbmGnark, c.HashNum, c.ToHash, false)
+		testdata.GenerateAndAssignGenDataModule(run, &gbmGnark, c.HashNum, c.ToHash, false, "test.csv")
 		// it assign mock data to EcRec and txn_data
 		AssignEcRecTxnData(run, gbmGnark, limits.MaxNbEcRecover, limits.MaxNbTx, sizeTxnData, size, td, ecRec, ac)
 
