@@ -37,15 +37,11 @@ const (
 type Addresses struct {
 
 	// main columns
-	//addressHiUntrimmed ifaces.Column
-	//addressHi          ifaces.Column
-	//addressLo          ifaces.Column
-
 	// 30 30 30 30 30 30 30 30 30
 	// 30 30 30 30 30 30 30 30 16 -- addressUntrimmed = keccak hash
 	// 30 30 30 30 30 10 00 00 00 -- address
-	addressUntrimmed [9]ifaces.Column                 // 9 * 30 = 270 - 256 = 14 bits overflow with 256 bit hash
-	address          [addressColsNumber]ifaces.Column // 6 * 30 = 180 - 160 = 20 bits overflow with 160 bits trimmed hash
+	addressUntrimmed [addressUntrimmedColsNumber]ifaces.Column // 9 * 30 = 270 - 256 = 14 bits overflow with 256 bit hash
+	address          [addressColsNumber]ifaces.Column          // 6 * 30 = 180 - 160 = 20 bits overflow with 160 bits trimmed hash
 
 	// filters over address columns
 	isAddress            ifaces.Column
@@ -183,8 +179,7 @@ func (addr *Addresses) csAddressTrimming(comp *wizard.CompiledIOP) {
 	}
 
 	addr.limbColumnsUntrimmed, addr.computeLimbColumnsUntrimmed = byte32cmp.Decompose(comp, addr.addressUntrimmed[signLimbInd], 3, 10)
-
-	//comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_5"), sym.Sub(addr.limbColumnsUntrimmed.Limbs[0], addr.address[signLimbInd]))
+	comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_5"), sym.Sub(addr.limbColumnsUntrimmed.Limbs[0], addr.address[signLimbInd]))
 }
 
 // It builds a provider from  public key extracted from Gnark-Data (as hash input) and addresses (as output).
@@ -206,13 +201,6 @@ func (addr *Addresses) buildGenericModule(id ifaces.Column, uaGnark *UnalignedGn
 		Index:  uaGnark.GnarkPublicKeyIndex,
 		ToHash: uaGnark.IsPublicKey,
 	}
-
-	//pkModule.Info = generic.GenInfoModule{
-	//	HashHi:   addr.addressHiUntrimmed,
-	//	HashLo:   addr.addressLo,
-	//	IsHashHi: addr.isAddress,
-	//	IsHashLo: addr.isAddress,
-	//}
 
 	// TODO (Nazarevsky): not sure that this is correct
 	pkModule.Info = generic.GenInfoModule{
@@ -258,48 +246,6 @@ func (addr *Addresses) assignAddress(
 	addr.assignHelperColumns(run, ecRec)
 }
 
-// DivideBytesTo30BitLimbs divides a []byte into 30-bit limbs as byte slices
-func divideBytesTo30BitLimbs(data []byte) [][]byte {
-	var limbs [][]byte
-	bitBuffer := uint64(0)
-	bitCount := 0
-
-	for _, b := range data {
-		bitBuffer |= uint64(b) << bitCount
-		bitCount += 8
-
-		for bitCount >= 30 {
-			limb := toByteArray(bitBuffer&0x3FFFFFFF, 4)
-			slices.Reverse(limb)
-			limbs = append(limbs, limb)
-			bitBuffer >>= 30
-			bitCount -= 30
-		}
-	}
-
-	if bitCount > 0 {
-		limb := toByteArray(bitBuffer, 4)
-		slices.Reverse(limb)
-		limbs = append(limbs, limb)
-	}
-
-	return limbs
-}
-
-// toByteArray converts an integer into a byte array of the specified length
-func toByteArray(value uint64, length int) []byte {
-	result := make([]byte, length)
-	for i := 0; i < length; i++ {
-		result[i] = byte(value & 0xFF)
-		value >>= 8
-	}
-
-	for len(result) > 0 && result[len(result)-1] == 0 {
-		result = result[:len(result)-1]
-	}
-	return result
-}
-
 // It assigns the main columns
 func (addr *Addresses) assignMainColumns(
 	run *wizard.ProverRuntime,
@@ -313,11 +259,13 @@ func (addr *Addresses) assignMainColumns(
 
 	permTrace := keccak.GenerateTrace(pkModule.Data.ScanStreams(run))
 
+	// Initialize an array of addressUntrimmedColumns limbs columns
 	addressUntrimmedColumns := make([][]field.Element, 0, addressUntrimmedColsNumber)
 	for i := 0; i < addressUntrimmedColsNumber; i++ {
 		addressUntrimmedColumns = append(addressUntrimmedColumns, make([]field.Element, 0, len(permTrace.HashOutPut)))
 	}
 
+	// Initialize an array of address limbs columns
 	addressColumns := make([][]field.Element, 0, addressColsNumber)
 	for i := 0; i < addressColsNumber; i++ {
 		addressColumns = append(addressColumns, make([]field.Element, 0, len(permTrace.HashOutPut)))
@@ -325,8 +273,13 @@ func (addr *Addresses) assignMainColumns(
 
 	isHash := make([]field.Element, 0, len(permTrace.HashOutPut))
 	for _, digest := range permTrace.HashOutPut {
-		addressUntrimmed := divideBytesTo30BitLimbs(digest[:])
+		// We reverse the digest here, so we can trim the latest (not first) bytes and divide bytes into limbs in
+		// the little endian format.
+		slices.Reverse(digest[:])
+
+		addressUntrimmed := divideTo30BitLimbs(digest[:])
 		for j, limb := range addressUntrimmed {
+			// Initialize limb values for each column of addressUntrimmed
 			var element field.Element
 			element.SetBytes(limb[:])
 
@@ -334,13 +287,19 @@ func (addr *Addresses) assignMainColumns(
 			addressUntrimmedColumns[j] = append(addressUntrimmedColumns[j], repeat...)
 		}
 
-		address := divideBytesTo30BitLimbs(digest[halfDigest-trimmingSize:])
+		address := divideTo30BitLimbs(digest[:len(digest)-halfDigest+trimmingSize])
 		for j, limb := range address {
+			// Initialize limb values for each column of address
+
 			var element field.Element
 			element.SetBytes(limb[:])
 
 			repeat := vector.Repeat(element, n)
 			addressColumns[j] = append(addressColumns[j], repeat...)
+		}
+
+		if len(addressColumns[len(addressColumns)-1]) == split {
+			n = nbRowsPerTxSign
 		}
 
 		repeatIsTxHash := vector.Repeat(field.Zero(), n-1)
@@ -352,6 +311,8 @@ func (addr *Addresses) assignMainColumns(
 	isFromEcRec := isHash[:split]
 	isFromTxnData := vector.Repeat(field.Zero(), split)
 	isFromTxnData = append(isFromTxnData, isHash[split:]...)
+
+	// Assign values to columns
 
 	for i := 0; i < addressUntrimmedColsNumber; i++ {
 		run.AssignColumn(addr.addressUntrimmed[i].GetColID(), smartvectors.RightZeroPadded(addressUntrimmedColumns[i], size))
