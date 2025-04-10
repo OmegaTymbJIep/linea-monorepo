@@ -1,7 +1,9 @@
 package ecdsa
 
 import (
+	"fmt"
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/plonk"
+	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
 	"github.com/consensys/linea-monorepo/prover/protocol/wizard"
 	"github.com/consensys/linea-monorepo/prover/zkevm/prover/hash/generic"
 )
@@ -49,10 +51,14 @@ func getEcdataArithmetization(comp *wizard.CompiledIOP) *ecDataSource {
 }
 
 func getTxnDataArithmetization(comp *wizard.CompiledIOP) *txnData {
+	var from [txnDataFromColsNumber]ifaces.Column
+	for i := 0; i < txnDataFromColsNumber; i++ {
+		from[i] = comp.Columns.GetHandle(ifaces.ColID(fmt.Sprintf("txndata.FROM_%d", i)))
+	}
+
 	td := &txnData{
-		fromHi: comp.Columns.GetHandle("txndata.FROM_HI"),
-		fromLo: comp.Columns.GetHandle("txndata.FROM_LO"),
-		ct:     comp.Columns.GetHandle("txndata.CT"),
+		from: from,
+		ct:   comp.Columns.GetHandle("txndata.CT"),
 	}
 	return td
 }

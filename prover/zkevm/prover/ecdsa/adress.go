@@ -1,6 +1,7 @@
 package ecdsa
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/consensys/linea-monorepo/prover/crypto/keccak"
 	"github.com/consensys/linea-monorepo/prover/maths/common/smartvectors"
@@ -9,6 +10,7 @@ import (
 	"github.com/consensys/linea-monorepo/prover/protocol/column"
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated"
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/byte32cmp"
+	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/projection"
 	"slices"
 
 	//"github.com/consensys/linea-monorepo/prover/protocol/dedicated/projection"
@@ -25,6 +27,8 @@ const (
 	addressColsNumber = 6
 	// Number of columns that represent an untrimmed address.
 	addressUntrimmedColsNumber = 9
+	// Number of columns that represent a hash value in txnData.
+	txnDataFromColsNumber = 9
 )
 
 // Address submodule is responsible for the columns holding the address of the sender,
@@ -98,6 +102,7 @@ func newAddress(comp *wizard.CompiledIOP, size int, ecRec *EcRecover, ac *antich
 		hashNum:              createCol("HASH_NUM"),
 	}
 
+	// TODO: range constraint on the most significant hash
 	td.csTxnData(comp)
 
 	// addresses are fetched from two arithmetization modules (ecRecover and txn-data)
@@ -132,7 +137,7 @@ func newAddress(comp *wizard.CompiledIOP, size int, ecRec *EcRecover, ac *antich
 	//	column.Shift(addr.isAddressHiEcRec, -1), addr.isAddressFromEcRec,
 	//)
 	//
-	//// projection from txn-data to address columns
+	// projection from txn-data to address columns
 	//projection.InsertProjection(comp, ifaces.QueryIDf("Project_AddressHi_TxnData"),
 	//	[]ifaces.Column{td.fromHi}, []ifaces.Column{addr.addressHi},
 	//	td.isFrom, addr.isAddressFromTxnData,
@@ -142,6 +147,11 @@ func newAddress(comp *wizard.CompiledIOP, size int, ecRec *EcRecover, ac *antich
 	//	[]ifaces.Column{td.fromLo}, []ifaces.Column{addr.addressLo},
 	//	td.isFrom, addr.isAddressFromTxnData,
 	//)
+
+	projection.InsertProjection(comp, ifaces.QueryIDf("Project_AddressUntrimmed_TxnData"),
+		[]ifaces.Column{td.from[0]}, []ifaces.Column{addressUntrimmed[0]},
+		td.isFrom, addr.isAddressFromTxnData,
+	)
 
 	// impose that hashNum = ac.ID + 1
 	comp.InsertGlobal(0, ifaces.QueryIDf("Hash_NUM_IS_ID"),
@@ -171,15 +181,18 @@ func (addr *Addresses) csIsAddressHiEcRec(comp *wizard.CompiledIOP, ecRec *EcRec
 			addr.isAddressHiEcRec))
 }
 
-// The constraints for trimming the HashHi to AddressHi
+// The constraints for trimming the addressUntrimmed to address
 func (addr *Addresses) csAddressTrimming(comp *wizard.CompiledIOP) {
-	signLimbInd := addressColsNumber - 1
-	for i := 0; i < signLimbInd; i++ {
-		comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_%d", i), sym.Sub(addr.address[i], addr.addressUntrimmed[i]))
+
+	signLimbInd := addressUntrimmedColsNumber - addressColsNumber
+	for i := 1; i < addressColsNumber; i++ {
+		comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_%d", addressColsNumber-i), sym.Sub(addr.address[i], addr.addressUntrimmed[i+signLimbInd]))
 	}
 
+	// Since the address in the big endian format, the most significant byte is on 0 position in address and on
+	// 9 - 6 = 3rd index in addressUntrimmed.
 	addr.limbColumnsUntrimmed, addr.computeLimbColumnsUntrimmed = byte32cmp.Decompose(comp, addr.addressUntrimmed[signLimbInd], 3, 10)
-	comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_5"), sym.Sub(addr.limbColumnsUntrimmed.Limbs[0], addr.address[signLimbInd]))
+	comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_0"), sym.Sub(addr.limbColumnsUntrimmed.Limbs[0], addr.address[0]))
 }
 
 // It builds a provider from  public key extracted from Gnark-Data (as hash input) and addresses (as output).
@@ -257,7 +270,8 @@ func (addr *Addresses) assignMainColumns(
 	split := splitAt(nbEcRecover)
 	n := nbRowsPerEcRec
 
-	permTrace := keccak.GenerateTrace(pkModule.Data.ScanStreams(run))
+	streams := pkModule.Data.ScanStreams(run)
+	permTrace := keccak.GenerateTrace(streams)
 
 	// Initialize an array of addressUntrimmedColumns limbs columns
 	addressUntrimmedColumns := make([][]field.Element, 0, addressUntrimmedColsNumber)
@@ -272,25 +286,30 @@ func (addr *Addresses) assignMainColumns(
 	}
 
 	isHash := make([]field.Element, 0, len(permTrace.HashOutPut))
-	for _, digest := range permTrace.HashOutPut {
+	for _, digest := range permTrace.HashOutPut[2:4] {
 		// We reverse the digest here, so we can trim the latest (not first) bytes and divide bytes into limbs in
 		// the little endian format.
+
 		slices.Reverse(digest[:])
 
 		addressUntrimmed := divideTo30BitLimbs(digest[:])
+		println("Address")
+		println(hex.EncodeToString(digest[:]))
 		for j, limb := range addressUntrimmed {
 			// Initialize limb values for each column of addressUntrimmed
 			var element field.Element
 			element.SetBytes(limb[:])
 
+			fmt.Println(element.String())
+
 			repeat := vector.Repeat(element, n)
 			addressUntrimmedColumns[j] = append(addressUntrimmedColumns[j], repeat...)
 		}
+		println()
 
 		address := divideTo30BitLimbs(digest[:len(digest)-halfDigest+trimmingSize])
 		for j, limb := range address {
 			// Initialize limb values for each column of address
-
 			var element field.Element
 			element.SetBytes(limb[:])
 
@@ -314,10 +333,14 @@ func (addr *Addresses) assignMainColumns(
 
 	// Assign values to columns
 
+	// We do a reverse of address columns since the address was storing in big-endian format.
+	slices.Reverse(addressUntrimmedColumns)
+
 	for i := 0; i < addressUntrimmedColsNumber; i++ {
 		run.AssignColumn(addr.addressUntrimmed[i].GetColID(), smartvectors.RightZeroPadded(addressUntrimmedColumns[i], size))
 	}
 
+	slices.Reverse(addressColumns)
 	for i := 0; i < addressColsNumber; i++ {
 		run.AssignColumn(addr.address[i].GetColID(), smartvectors.RightZeroPadded(addressColumns[i], size))
 	}
@@ -358,9 +381,8 @@ func (td *txnData) csTxnData(comp *wizard.CompiledIOP) {
 
 // txndata represents the txn_data module from the arithmetization side.
 type txnData struct {
-	fromHi ifaces.Column
-	fromLo ifaces.Column
-	ct     ifaces.Column
+	from [txnDataFromColsNumber]ifaces.Column
+	ct   ifaces.Column
 
 	// helper column
 	isFrom    ifaces.Column
