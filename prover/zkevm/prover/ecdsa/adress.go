@@ -149,7 +149,7 @@ func newAddress(comp *wizard.CompiledIOP, size int, ecRec *EcRecover, ac *antich
 	//)
 
 	projection.InsertProjection(comp, ifaces.QueryIDf("Project_AddressUntrimmed_TxnData"),
-		[]ifaces.Column{td.from[0]}, []ifaces.Column{addressUntrimmed[0]},
+		td.from[:], addressUntrimmed[:],
 		td.isFrom, addr.isAddressFromTxnData,
 	)
 
