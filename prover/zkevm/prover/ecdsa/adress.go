@@ -101,7 +101,6 @@ func newAddress(comp *wizard.CompiledIOP, size int, ecRec *EcRecover, ac *antich
 		hashNum:              createCol("HASH_NUM"),
 	}
 
-	// TODO: range constraint on the most significant hash
 	td.csTxnData(comp)
 
 	// addresses are fetched from two arithmetization modules (ecRecover and txn-data)
@@ -137,16 +136,6 @@ func newAddress(comp *wizard.CompiledIOP, size int, ecRec *EcRecover, ac *antich
 	//)
 	//
 	// projection from txn-data to address columns
-	//projection.InsertProjection(comp, ifaces.QueryIDf("Project_AddressHi_TxnData"),
-	//	[]ifaces.Column{td.fromHi}, []ifaces.Column{addr.addressHi},
-	//	td.isFrom, addr.isAddressFromTxnData,
-	//)
-	//
-	//projection.InsertProjection(comp, ifaces.QueryIDf("Project_AddressLO_TxnData"),
-	//	[]ifaces.Column{td.fromLo}, []ifaces.Column{addr.addressLo},
-	//	td.isFrom, addr.isAddressFromTxnData,
-	//)
-
 	projection.InsertProjection(comp, ifaces.QueryIDf("Project_AddressUntrimmed_TxnData"),
 		td.from[:], addressUntrimmed[:],
 		td.isFrom, addr.isAddressFromTxnData,
@@ -364,6 +353,8 @@ func (td *txnData) csTxnData(comp *wizard.CompiledIOP) {
 
 	//  isFrom == 1 iff ct==1
 	td.isFrom, td.pa_IsZero = dedicated.IsZero(comp, sym.Sub(td.ct, 1))
+
+	comp.InsertRange(0, ifaces.QueryIDf("Range_FromMostSignificantLimb_TxnData"), td.from[txnDataFromColsNumber-1], 2<<16)
 }
 
 // txndata represents the txn_data module from the arithmetization side.
