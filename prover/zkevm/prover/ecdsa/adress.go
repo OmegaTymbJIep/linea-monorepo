@@ -1,7 +1,6 @@
 package ecdsa
 
 import (
-	"encoding/hex"
 	"fmt"
 	"github.com/consensys/linea-monorepo/prover/crypto/keccak"
 	"github.com/consensys/linea-monorepo/prover/maths/common/smartvectors"
@@ -183,16 +182,12 @@ func (addr *Addresses) csIsAddressHiEcRec(comp *wizard.CompiledIOP, ecRec *EcRec
 
 // The constraints for trimming the addressUntrimmed to address
 func (addr *Addresses) csAddressTrimming(comp *wizard.CompiledIOP) {
-
-	signLimbInd := addressUntrimmedColsNumber - addressColsNumber
-	for i := 1; i < addressColsNumber; i++ {
-		comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_%d", addressColsNumber-i), sym.Sub(addr.address[i], addr.addressUntrimmed[i+signLimbInd]))
+	for i := 0; i < addressColsNumber-1; i++ {
+		comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_%d", i), sym.Sub(addr.address[i], addr.addressUntrimmed[i]))
 	}
 
-	// Since the address in the big endian format, the most significant byte is on 0 position in address and on
-	// 9 - 6 = 3rd index in addressUntrimmed.
-	addr.limbColumnsUntrimmed, addr.computeLimbColumnsUntrimmed = byte32cmp.Decompose(comp, addr.addressUntrimmed[signLimbInd], 3, 10)
-	comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_0"), sym.Sub(addr.limbColumnsUntrimmed.Limbs[0], addr.address[0]))
+	addr.limbColumnsUntrimmed, addr.computeLimbColumnsUntrimmed = byte32cmp.Decompose(comp, addr.addressUntrimmed[addressColsNumber-1], 3, 10)
+	comp.InsertGlobal(0, ifaces.QueryIDf("Address_Trimming_%d", addressColsNumber-1), sym.Sub(addr.limbColumnsUntrimmed.Limbs[0], addr.address[addressColsNumber-1]))
 }
 
 // It builds a provider from  public key extracted from Gnark-Data (as hash input) and addresses (as output).
@@ -215,7 +210,7 @@ func (addr *Addresses) buildGenericModule(id ifaces.Column, uaGnark *UnalignedGn
 		ToHash: uaGnark.IsPublicKey,
 	}
 
-	// TODO (Nazarevsky): not sure that this is correct
+	// TODO (Nazarevsky): this is not correct - we need to change the Hash module
 	pkModule.Info = generic.GenInfoModule{
 		HashHi:   addr.addressUntrimmed[0],
 		HashLo:   addr.address[0],
@@ -286,26 +281,25 @@ func (addr *Addresses) assignMainColumns(
 	}
 
 	isHash := make([]field.Element, 0, len(permTrace.HashOutPut))
-	for _, digest := range permTrace.HashOutPut[2:4] {
+	for _, digest := range permTrace.HashOutPut {
+		if len(addressColumns[len(addressColumns)-1]) == split {
+			n = nbRowsPerTxSign
+		}
+
 		// We reverse the digest here, so we can trim the latest (not first) bytes and divide bytes into limbs in
 		// the little endian format.
 
 		slices.Reverse(digest[:])
 
 		addressUntrimmed := divideTo30BitLimbs(digest[:])
-		println("Address")
-		println(hex.EncodeToString(digest[:]))
 		for j, limb := range addressUntrimmed {
 			// Initialize limb values for each column of addressUntrimmed
 			var element field.Element
 			element.SetBytes(limb[:])
 
-			fmt.Println(element.String())
-
 			repeat := vector.Repeat(element, n)
 			addressUntrimmedColumns[j] = append(addressUntrimmedColumns[j], repeat...)
 		}
-		println()
 
 		address := divideTo30BitLimbs(digest[:len(digest)-halfDigest+trimmingSize])
 		for j, limb := range address {
@@ -315,10 +309,6 @@ func (addr *Addresses) assignMainColumns(
 
 			repeat := vector.Repeat(element, n)
 			addressColumns[j] = append(addressColumns[j], repeat...)
-		}
-
-		if len(addressColumns[len(addressColumns)-1]) == split {
-			n = nbRowsPerTxSign
 		}
 
 		repeatIsTxHash := vector.Repeat(field.Zero(), n-1)
@@ -334,13 +324,10 @@ func (addr *Addresses) assignMainColumns(
 	// Assign values to columns
 
 	// We do a reverse of address columns since the address was storing in big-endian format.
-	slices.Reverse(addressUntrimmedColumns)
-
 	for i := 0; i < addressUntrimmedColsNumber; i++ {
 		run.AssignColumn(addr.addressUntrimmed[i].GetColID(), smartvectors.RightZeroPadded(addressUntrimmedColumns[i], size))
 	}
 
-	slices.Reverse(addressColumns)
 	for i := 0; i < addressColsNumber; i++ {
 		run.AssignColumn(addr.address[i].GetColID(), smartvectors.RightZeroPadded(addressColumns[i], size))
 	}

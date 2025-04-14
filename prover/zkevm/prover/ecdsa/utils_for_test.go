@@ -1,7 +1,6 @@
 package ecdsa
 
 import (
-	"encoding/hex"
 	"fmt"
 	"github.com/consensys/linea-monorepo/prover/crypto/keccak"
 	"github.com/consensys/linea-monorepo/prover/maths/common/smartvectors"
@@ -67,13 +66,12 @@ func AssignEcRecTxnData(
 
 	offSetEcRec := 0
 
-	//if nbEcRec+nbTxS != len(permTrace.HashOutPut) {
-	//	utils.Panic("the number of generated hash %v should be %v + %v", len(permTrace.HashOutPut), nbEcRec, nbTxS)
-	//}
-	for i, hashRes := range permTrace.HashOutPut[1:4] {
-		println("TxnData")
+	if nbEcRec+nbTxS != len(permTrace.HashOutPut) {
+		utils.Panic("the number of generated hash %v should be %v + %v", len(permTrace.HashOutPut), nbEcRec, nbTxS)
+	}
+
+	for i, hashRes := range permTrace.HashOutPut {
 		slices.Reverse(hashRes[:])
-		println(hex.EncodeToString(hashRes[:]))
 
 		fromLimbs := divideTo30BitLimbs(hashRes[:])
 
@@ -89,21 +87,13 @@ func AssignEcRecTxnData(
 
 			for k, limb := range fromLimbs {
 				// Initialize limb values for each column of from
-				from[k][j].SetBytes(limb[:])
-				println(from[k][j].String())
+				from[k][j*nbRowsPerTxInTxnData].SetBytes(limb[:])
 			}
 		}
-		println()
 	}
 
 	run.AssignColumn(ecRec.EcRecoverIsRes.GetColID(), smartvectors.RightZeroPadded(isEcRecRes, size))
 	run.AssignColumn(ecRec.Limb.GetColID(), smartvectors.RightZeroPadded(ecRecLimb, size))
-
-	//println("TxnData")
-	//for _, e := range from {
-	//	fmt.Println(e[0])
-	//}
-	//println()
 
 	// they are arithmetization columns, so LeftZeroPad
 	for i := 0; i < txnDataFromColsNumber; i++ {
@@ -161,9 +151,6 @@ func (td *txnData) assignTxnDataFromPK(
 	}
 
 	// populate the columns FromHi and FromLo
-	//fromHi := make([]field.Element, maxNbTx*nbRowsPerTxInTxnData)
-	//fromLo := make([]field.Element, maxNbTx*nbRowsPerTxInTxnData)
-
 	from := make([][]field.Element, 0, txnDataFromColsNumber)
 	for i := 0; i < txnDataFromColsNumber; i++ {
 		from = append(from, make([]field.Element, maxNbTx*nbRowsPerTxInTxnData))
