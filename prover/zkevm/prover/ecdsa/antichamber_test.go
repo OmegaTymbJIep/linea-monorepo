@@ -3,6 +3,7 @@ package ecdsa
 import (
 	"crypto/rand"
 	"fmt"
+	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
 	"math/big"
 	"os"
 	"testing"
@@ -54,11 +55,16 @@ func TestAntichamber(t *testing.T) {
 			// declar txn_data module
 			txSrc = commitTxnData(comp, limits, nbRowsPerTxInTxnData)
 
+			var limbs [ecRecoverLimbColumnsNumber]ifaces.Column
+			for i := 0; i < ecRecoverLimbColumnsNumber; i++ {
+				limbs[i] = ct.GetCommit(b, fmt.Sprintf("EC_DATA_LIMB_%d", i))
+			}
+
 			// declare ecdata (ecRecover)
 			ecSrc = &ecDataSource{
 				CsEcrecover: ct.GetCommit(b, "EC_DATA_CS_ECRECOVER"),
 				ID:          ct.GetCommit(b, "EC_DATA_ID"),
-				Limb:        ct.GetCommit(b, "EC_DATA_LIMB"),
+				Limb:        limbs,
 				SuccessBit:  ct.GetCommit(b, "EC_DATA_SUCCESS_BIT"),
 				Index:       ct.GetCommit(b, "EC_DATA_INDEX"),
 				IsData:      ct.GetCommit(b, "EC_DATA_IS_DATA"),

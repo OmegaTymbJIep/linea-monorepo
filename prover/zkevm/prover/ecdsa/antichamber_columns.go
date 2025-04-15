@@ -16,14 +16,17 @@ func (ac *antichamber) cols(withActive bool) []ifaces.Column {
 }
 
 func (ec *EcRecover) cols() []ifaces.Column {
-	return []ifaces.Column{
+	columns := []ifaces.Column{
 		ec.EcRecoverID,
-		ec.Limb,
 		ec.SuccessBit,
 		ec.EcRecoverIndex,
 		ec.EcRecoverIsData,
 		ec.EcRecoverIsRes,
 	}
+
+	columns = append(columns, ec.Limb[:]...)
+
+	return columns
 }
 
 func (ad *Addresses) cols() []ifaces.Column {

@@ -27,6 +27,7 @@ const (
 	// number of public inputs gnark circuit takes as a public witness
 	nbRowsPerGnarkPushing = 14
 
+	// TODO: will be less
 	// 10 rows for fetching from arithmetization-columns
 	nbRowsPerEcRecFetching = 10
 	nbRowsPerEcRec         = nbRowsPerEcRecFetching + nbRowsPerGnarkPushing

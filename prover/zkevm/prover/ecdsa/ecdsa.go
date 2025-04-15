@@ -1,7 +1,6 @@
 package ecdsa
 
 import (
-	"fmt"
 	"github.com/consensys/linea-monorepo/prover/protocol/dedicated/plonk"
 	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
 	"github.com/consensys/linea-monorepo/prover/protocol/wizard"
@@ -39,10 +38,15 @@ func (e *EcdsaZkEvm) GetProviders() []generic.GenericByteModule {
 }
 
 func getEcdataArithmetization(comp *wizard.CompiledIOP) *ecDataSource {
+	var limbColumns [ecRecoverLimbColumnsNumber]ifaces.Column
+	for i := 0; i < ecRecoverLimbColumnsNumber; i++ {
+		limbColumns[i] = comp.Columns.GetHandle(ifaces.ColIDf("ecdata.LIMB_%d", i))
+	}
+
 	return &ecDataSource{
 		CsEcrecover: comp.Columns.GetHandle("ecdata.CIRCUIT_SELECTOR_ECRECOVER"),
 		ID:          comp.Columns.GetHandle("ecdata.ID"),
-		Limb:        comp.Columns.GetHandle("ecdata.LIMB"),
+		Limb:        limbColumns,
 		SuccessBit:  comp.Columns.GetHandle("ecdata.SUCCESS_BIT"),
 		Index:       comp.Columns.GetHandle("ecdata.INDEX"),
 		IsData:      comp.Columns.GetHandle("ecdata.IS_ECRECOVER_DATA"),
@@ -53,7 +57,7 @@ func getEcdataArithmetization(comp *wizard.CompiledIOP) *ecDataSource {
 func getTxnDataArithmetization(comp *wizard.CompiledIOP) *txnData {
 	var from [txnDataFromColsNumber]ifaces.Column
 	for i := 0; i < txnDataFromColsNumber; i++ {
-		from[i] = comp.Columns.GetHandle(ifaces.ColID(fmt.Sprintf("txndata.FROM_%d", i)))
+		from[i] = comp.Columns.GetHandle(ifaces.ColIDf("txndata.FROM_%d", i))
 	}
 
 	td := &txnData{
