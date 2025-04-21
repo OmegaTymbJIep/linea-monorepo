@@ -7,20 +7,29 @@ import (
 	"github.com/consensys/gnark/std/algebra"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
 	"github.com/consensys/gnark/std/evmprecompiles"
-	"github.com/consensys/gnark/std/math/bitslice"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/math/emulated/emparams"
 	"github.com/consensys/linea-monorepo/prover/maths/field"
 )
 
+const ecRecoverColNumber = 9
+
 type EcRecoverInstance struct {
-	PKXHi, PKXLo, PKYHi, PKYLo frontend.Variable `gnark:",public"`
-	HHi, HLo                   frontend.Variable `gnark:",public"`
-	VHi, VLo                   frontend.Variable `gnark:",public"`
-	RHi, RLo                   frontend.Variable `gnark:",public"`
-	SHi, SLo                   frontend.Variable `gnark:",public"`
-	SUCCESS_BIT                frontend.Variable `gnark:",public"`
-	ECRECOVERBIT               frontend.Variable `gnark:",public"`
+	PKX [ecRecoverColNumber]frontend.Variable `gnark:",public"`
+	PKY [ecRecoverColNumber]frontend.Variable `gnark:",public"`
+	H   [ecRecoverColNumber]frontend.Variable `gnark:",public"`
+	V   [ecRecoverColNumber]frontend.Variable `gnark:",public"`
+	R   [ecRecoverColNumber]frontend.Variable `gnark:",public"`
+	S   [ecRecoverColNumber]frontend.Variable `gnark:",public"`
+
+	//PKXHi, PKXLo, PKYHi, PKYLo frontend.Variable `gnark:",public"`
+	//HHi, HLo                   frontend.Variable `gnark:",public"`
+	//VHi, VLo                   frontend.Variable `gnark:",public"`
+	//RHi, RLo                   frontend.Variable `gnark:",public"`
+	//SHi, SLo                   frontend.Variable `gnark:",public"`
+
+	SUCCESS_BIT  frontend.Variable `gnark:",public"`
+	ECRECOVERBIT frontend.Variable `gnark:",public"`
 }
 
 type MultiEcRecoverCircuit struct {
@@ -60,40 +69,22 @@ func (c *EcRecoverInstance) splitInputs(api frontend.API) (PK *sw_emulated.Affin
 		err = fmt.Errorf("field emulation: %w", err2)
 		return
 	}
-	// gnark circuit works with 64 bits values, we need to split the 128 bits
-	// values into high and low parts.
-	// we leave the result unconstrained as field emulation constraints automatically
-	msgLimbs := make([]frontend.Variable, 4)
-	msgLimbs[2], msgLimbs[3] = bitslice.Partition(api, c.HHi, 64, bitslice.WithNbDigits(128))
-	msgLimbs[0], msgLimbs[1] = bitslice.Partition(api, c.HLo, 64, bitslice.WithNbDigits(128))
-	msg = fr.NewElement(msgLimbs)
 
-	PXlimbs := make([]frontend.Variable, 4)
-	PXlimbs[2], PXlimbs[3] = bitslice.Partition(api, c.PKXHi, 64, bitslice.WithNbDigits(128))
-	PXlimbs[0], PXlimbs[1] = bitslice.Partition(api, c.PKXLo, 64, bitslice.WithNbDigits(128))
-	PX := fp.NewElement(PXlimbs)
+	// TODO: we might need to reverse slices to obtain different encoding (big endian or little endian)
+	msg = fr.NewElement(c.H)
 
-	PYlimbs := make([]frontend.Variable, 4)
-	PYlimbs[2], PYlimbs[3] = bitslice.Partition(api, c.PKYHi, 64, bitslice.WithNbDigits(128))
-	PYlimbs[0], PYlimbs[1] = bitslice.Partition(api, c.PKYLo, 64, bitslice.WithNbDigits(128))
-	PY := fp.NewElement(PYlimbs)
 	PK = &sw_emulated.AffinePoint[emparams.Secp256k1Fp]{
-		X: *PX,
-		Y: *PY,
+		X: *fp.NewElement(c.PKX),
+		Y: *fp.NewElement(c.PKY),
 	}
 
-	api.AssertIsEqual(c.VHi, 0)
-	v = c.VLo
+	for i := 0; i < ecRecoverColNumber-1; i++ {
+		api.AssertIsEqual(c.V[i], 0)
+	}
+	v = c.V[ecRecoverColNumber-1]
 
-	rLimbs := make([]frontend.Variable, 4)
-	rLimbs[2], rLimbs[3] = bitslice.Partition(api, c.RHi, 64, bitslice.WithNbDigits(128))
-	rLimbs[0], rLimbs[1] = bitslice.Partition(api, c.RLo, 64, bitslice.WithNbDigits(128))
-	r = fr.NewElement(rLimbs)
-
-	sLimbs := make([]frontend.Variable, 4)
-	sLimbs[2], sLimbs[3] = bitslice.Partition(api, c.SHi, 64, bitslice.WithNbDigits(128))
-	sLimbs[0], sLimbs[1] = bitslice.Partition(api, c.SLo, 64, bitslice.WithNbDigits(128))
-	s = fr.NewElement(sLimbs)
+	r = fr.NewElement(c.R)
+	s = fr.NewElement(c.S)
 
 	isFailure = api.Sub(1, c.SUCCESS_BIT)
 	strictRange = c.ECRECOVERBIT
@@ -107,8 +98,11 @@ func inputFiller(circuitInstance, inputIndex int) field.Element {
 
 	// public key 1*G
 	placeholderPubkey := [64]byte{0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb, 0xac, 0x55, 0xa0, 0x62, 0x95, 0xce, 0x87, 0xb, 0x7, 0x2, 0x9b, 0xfc, 0xdb, 0x2d, 0xce, 0x28, 0xd9, 0x59, 0xf2, 0x81, 0x5b, 0x16, 0xf8, 0x17, 0x98, 0x48, 0x3a, 0xda, 0x77, 0x26, 0xa3, 0xc4, 0x65, 0x5d, 0xa4, 0xfb, 0xfc, 0xe, 0x11, 0x8, 0xa8, 0xfd, 0x17, 0xb4, 0x48, 0xa6, 0x85, 0x54, 0x19, 0x9c, 0x47, 0xd0, 0x8f, 0xfb, 0x10, 0xd4, 0xb8}
+	placeholderPubkeyXLimbs := to30BitLimbs(placeholderPubkey[:32])
+	placeholderPubkeyYLimbs := to30BitLimbs(placeholderPubkey[32:])
 	// 1000000...0000
 	placeholderTxHash := [32]byte{0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}
+	placeholderTxHashLimbs := to30BitLimbs(placeholderTxHash[:])
 	// valid signature for secret key 1 and tx hash 1 with random nonce
 	// valid signature for secret key 1 and tx hash 1 with nonce 2
 	placeholderSignature := [66]byte{
@@ -119,36 +113,38 @@ func inputFiller(circuitInstance, inputIndex int) field.Element {
 		// v part of signature (in EVM format, 27 is added to the recovery id)
 		0x0, 0x1b,
 	}
+
+	placeholderSignatureR := to30BitLimbs(placeholderSignature[:32])
+	placeholderSignatureS := to30BitLimbs(placeholderSignature[32:64])
+
 	var ret field.Element
-	switch inputIndex % 14 {
-	case 0: // PK X HI
-		ret.SetBytes(placeholderPubkey[0:16])
-	case 1: // PK X LO
-		ret.SetBytes(placeholderPubkey[16:32])
-	case 2: // PK Y HI
-		ret.SetBytes(placeholderPubkey[32:48])
-	case 3: // PK Y LO
-		ret.SetBytes(placeholderPubkey[48:64])
-	case 4: // MSG HI
-		ret.SetBytes(placeholderTxHash[0:16])
-	case 5: // MSH LO
-		ret.SetBytes(placeholderTxHash[16:32])
-	case 6: // v HI
+	switch {
+	// PK X
+	case inputIndex < 9:
+		ret.SetBytes(placeholderPubkeyXLimbs[inputIndex])
+	// PK Y
+	case inputIndex >= 9 && inputIndex < 18:
+		ret.SetBytes(placeholderPubkeyYLimbs[inputIndex-9])
+	// MSG
+	case inputIndex >= 18 && inputIndex < 27:
+		ret.SetBytes(placeholderTxHashLimbs[inputIndex-18])
+	// v (0 limbs)
+	case inputIndex >= 27 && inputIndex < 35:
 		ret.SetUint64(0)
-	case 7: // v LO
+	// v (1b limb)
+	case inputIndex == 36:
 		ret.SetUint64(0x1b)
-	case 8: // r HI
-		ret.SetBytes(placeholderSignature[0:16])
-	case 9: // r LO
-		ret.SetBytes(placeholderSignature[16:32])
-	case 10: // s HI
-		ret.SetBytes(placeholderSignature[32:48])
-	case 11: // s LO
-		ret.SetBytes(placeholderSignature[48:64])
-	case 12: // success bit
+	// r
+	case inputIndex >= 36 && inputIndex < 45:
+		ret.SetBytes(placeholderSignatureR[inputIndex-36])
+	// s
+	case inputIndex >= 45 && inputIndex < 54:
+		ret.SetBytes(placeholderSignatureS[inputIndex-45])
+	case inputIndex == 55: // success bit
 		ret.SetUint64(1)
-	case 13: // ecrecover bit
+	case inputIndex == 56: // ecrecover bit
 		ret.SetUint64(0)
 	}
+
 	return ret
 }
