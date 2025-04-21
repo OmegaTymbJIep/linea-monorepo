@@ -25,7 +25,7 @@ const (
 	halfDigest = 16
 
 	// number of public inputs gnark circuit takes as a public witness
-	nbRowsPerGnarkPushing = 14
+	nbRowsPerGnarkPushing = 56
 
 	// TODO: will be less
 	// 45 rows for fetching from arithmetization-columns
