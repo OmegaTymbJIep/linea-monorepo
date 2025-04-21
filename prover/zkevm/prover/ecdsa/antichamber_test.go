@@ -3,7 +3,6 @@ package ecdsa
 import (
 	"crypto/rand"
 	"fmt"
-	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
 	"math/big"
 	"os"
 	"testing"
@@ -22,7 +21,7 @@ import (
 )
 
 func TestAntichamber(t *testing.T) {
-	f, err := os.Open("testdata/antichamber.csv")
+	f, err := os.Open("testdata/antichamber_new.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,16 +54,11 @@ func TestAntichamber(t *testing.T) {
 			// declar txn_data module
 			txSrc = commitTxnData(comp, limits, nbRowsPerTxInTxnData)
 
-			var limbs [ecRecoverLimbColumnsNumber]ifaces.Column
-			for i := 0; i < ecRecoverLimbColumnsNumber; i++ {
-				limbs[i] = ct.GetCommit(b, fmt.Sprintf("EC_DATA_LIMB_%d", i))
-			}
-
 			// declare ecdata (ecRecover)
 			ecSrc = &ecDataSource{
 				CsEcrecover: ct.GetCommit(b, "EC_DATA_CS_ECRECOVER"),
 				ID:          ct.GetCommit(b, "EC_DATA_ID"),
-				Limb:        limbs,
+				Limb:        ct.GetCommit(b, "EC_DATA_LIMB"),
 				SuccessBit:  ct.GetCommit(b, "EC_DATA_SUCCESS_BIT"),
 				Index:       ct.GetCommit(b, "EC_DATA_INDEX"),
 				IsData:      ct.GetCommit(b, "EC_DATA_IS_DATA"),
@@ -94,9 +88,7 @@ func TestAntichamber(t *testing.T) {
 			// assign txn_data module from pk
 			txSrc.assignTxnDataFromPK(run, ac, trace.HashOutPut, nbRowsPerTxInTxnData)
 
-			ct.Assign(run,
-				"EC_DATA_CS_ECRECOVER", "EC_DATA_ID", "EC_DATA_LIMB", "EC_DATA_SUCCESS_BIT", "EC_DATA_INDEX", "EC_DATA_IS_DATA", "EC_DATA_IS_RES",
-			)
+			ct.Assign(run, "EC_DATA_CS_ECRECOVER", "EC_DATA_ID", "EC_DATA_LIMB", "EC_DATA_SUCCESS_BIT", "EC_DATA_INDEX", "EC_DATA_IS_DATA", "EC_DATA_IS_RES")
 			ac.assign(run, dummyTxSignatureGetter, limits.MaxNbTx)
 		})
 

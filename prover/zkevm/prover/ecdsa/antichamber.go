@@ -28,8 +28,8 @@ const (
 	nbRowsPerGnarkPushing = 14
 
 	// TODO: will be less
-	// 10 rows for fetching from arithmetization-columns
-	nbRowsPerEcRecFetching = 10
+	// 45 rows for fetching from arithmetization-columns
+	nbRowsPerEcRecFetching = 45
 	nbRowsPerEcRec         = nbRowsPerEcRecFetching + nbRowsPerGnarkPushing
 
 	// 1 row for fetching from RLP

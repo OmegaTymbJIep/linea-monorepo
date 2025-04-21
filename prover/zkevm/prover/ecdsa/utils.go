@@ -2,8 +2,8 @@ package ecdsa
 
 import "slices"
 
-// divideTo30BitLimbs divides a []byte into 30-bit limbs as byte slices.
-func divideTo30BitLimbs(data []byte) [][]byte {
+// to30BitLimbs divides a []byte into 30-bit limbs as byte slices.
+func to30BitLimbs(data []byte) [][]byte {
 	var limbs [][]byte
 	bitBuffer := uint64(0)
 	bitCount := 0
@@ -28,6 +28,39 @@ func divideTo30BitLimbs(data []byte) [][]byte {
 	}
 
 	return limbs
+}
+
+func from30BitLimbs(limbs [][]byte) []byte {
+	var data []byte
+	bitBuffer := uint64(0)
+	bitCount := 0
+
+	for _, limb := range limbs {
+		slices.Reverse(limb)
+		value := uint64(0)
+		for i, b := range limb {
+			value |= uint64(b) << (8 * i)
+		}
+
+		bitBuffer |= value << bitCount
+		bitCount += 30
+
+		for bitCount >= 8 {
+			data = append(data, byte(bitBuffer&0xFF))
+			bitBuffer >>= 8
+			bitCount -= 8
+		}
+	}
+
+	if bitCount > 0 {
+		data = append(data, byte(bitBuffer))
+	}
+
+	for len(data) > 0 && data[len(data)-1] == 0 {
+		data = data[:len(data)-1]
+	}
+
+	return data
 }
 
 // toByteArray converts an integer into a byte array of the specified length.

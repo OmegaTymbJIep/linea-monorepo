@@ -38,15 +38,10 @@ func (e *EcdsaZkEvm) GetProviders() []generic.GenericByteModule {
 }
 
 func getEcdataArithmetization(comp *wizard.CompiledIOP) *ecDataSource {
-	var limbColumns [ecRecoverLimbColumnsNumber]ifaces.Column
-	for i := 0; i < ecRecoverLimbColumnsNumber; i++ {
-		limbColumns[i] = comp.Columns.GetHandle(ifaces.ColIDf("ecdata.LIMB_%d", i))
-	}
-
 	return &ecDataSource{
 		CsEcrecover: comp.Columns.GetHandle("ecdata.CIRCUIT_SELECTOR_ECRECOVER"),
 		ID:          comp.Columns.GetHandle("ecdata.ID"),
-		Limb:        limbColumns,
+		Limb:        comp.Columns.GetHandle("ecdata.LIMB"),
 		SuccessBit:  comp.Columns.GetHandle("ecdata.SUCCESS_BIT"),
 		Index:       comp.Columns.GetHandle("ecdata.INDEX"),
 		IsData:      comp.Columns.GetHandle("ecdata.IS_ECRECOVER_DATA"),

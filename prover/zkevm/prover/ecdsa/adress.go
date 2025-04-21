@@ -280,7 +280,7 @@ func (addr *Addresses) assignMainColumns(
 
 		slices.Reverse(digest[:])
 
-		addressUntrimmed := divideTo30BitLimbs(digest[:])
+		addressUntrimmed := to30BitLimbs(digest[:])
 		for j, limb := range addressUntrimmed {
 			// Initialize limb values for each column of addressUntrimmed
 			var element field.Element
@@ -290,7 +290,7 @@ func (addr *Addresses) assignMainColumns(
 			addressUntrimmedColumns[j] = append(addressUntrimmedColumns[j], repeat...)
 		}
 
-		address := divideTo30BitLimbs(digest[:len(digest)-halfDigest+trimmingSize])
+		address := to30BitLimbs(digest[:len(digest)-halfDigest+trimmingSize])
 		for j, limb := range address {
 			// Initialize limb values for each column of address
 			var element field.Element

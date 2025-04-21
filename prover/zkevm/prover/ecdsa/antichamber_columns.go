@@ -22,9 +22,8 @@ func (ec *EcRecover) cols() []ifaces.Column {
 		ec.EcRecoverIndex,
 		ec.EcRecoverIsData,
 		ec.EcRecoverIsRes,
+		ec.Limb,
 	}
-
-	columns = append(columns, ec.Limb[:]...)
 
 	return columns
 }

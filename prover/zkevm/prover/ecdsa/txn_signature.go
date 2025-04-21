@@ -126,7 +126,7 @@ func (txn *txSignature) assignTxSignature(run *wizard.ProverRuntime, nbActualEcR
 	}
 
 	for _, digest := range permTrace.HashOutPut {
-		hashLimbs := divideTo30BitLimbs(digest[:])
+		hashLimbs := to30BitLimbs(digest[:])
 		for j, limb := range hashLimbs {
 			// Initialize limb values for each column of txHash
 			var element field.Element

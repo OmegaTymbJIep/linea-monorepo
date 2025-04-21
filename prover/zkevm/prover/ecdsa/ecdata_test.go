@@ -1,8 +1,6 @@
 package ecdsa
 
 import (
-	"fmt"
-	"github.com/consensys/linea-monorepo/prover/protocol/ifaces"
 	"os"
 	"testing"
 
@@ -12,7 +10,7 @@ import (
 )
 
 func TestEcDataAssignData(t *testing.T) {
-	f, err := os.Open("testdata/ecdata_test.csv")
+	f, err := os.Open("testdata/ecdata_out_new.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,15 +26,10 @@ func TestEcDataAssignData(t *testing.T) {
 	var ecSrc *ecDataSource
 	cmp := wizard.Compile(
 		func(b *wizard.Builder) {
-			var limbs [ecRecoverLimbColumnsNumber]ifaces.Column
-			for i := 0; i < ecRecoverLimbColumnsNumber; i++ {
-				limbs[i] = ct.GetCommit(b, fmt.Sprintf("EC_DATA_LIMB_%d", i))
-			}
-
 			ecSrc = &ecDataSource{
 				CsEcrecover: ct.GetCommit(b, "EC_DATA_CS_ECRECOVER"),
 				ID:          ct.GetCommit(b, "EC_DATA_ID"),
-				Limb:        limbs,
+				Limb:        ct.GetCommit(b, "EC_DATA_LIMB"),
 				SuccessBit:  ct.GetCommit(b, "EC_DATA_SUCCESS_BIT"),
 				Index:       ct.GetCommit(b, "EC_DATA_INDEX"),
 				IsData:      ct.GetCommit(b, "EC_DATA_IS_DATA"),

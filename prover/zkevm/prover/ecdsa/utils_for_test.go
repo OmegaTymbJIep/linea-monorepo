@@ -1,6 +1,7 @@
 package ecdsa
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/consensys/linea-monorepo/prover/crypto/keccak"
 	"github.com/consensys/linea-monorepo/prover/maths/common/smartvectors"
@@ -26,13 +27,8 @@ func commitEcRecTxnData(comp *wizard.CompiledIOP, size1 int, size int, ac *antic
 		ct:   comp.InsertCommit(0, ifaces.ColIDf("txn_data.CT"), size1),
 	}
 
-	var limbs [ecRecoverLimbColumnsNumber]ifaces.Column
-	for i := 0; i < ecRecoverLimbColumnsNumber; i++ {
-		limbs[i] = comp.InsertCommit(0, ifaces.ColIDf("ECRECOVER_LIMB_%d", i), size)
-	}
-
 	ecRec = &EcRecover{
-		Limb:           limbs,
+		Limb:           comp.InsertCommit(0, ifaces.ColIDf("ECRECOVER_LIMB"), size),
 		EcRecoverIsRes: comp.InsertCommit(0, ifaces.ColIDf("ECRECOVER_ISRES"), size),
 	}
 	ac.IsActive = comp.InsertCommit(0, "AntiChamber_IsActive", size)
@@ -78,7 +74,7 @@ func AssignEcRecTxnData(
 	for i, hashRes := range permTrace.HashOutPut {
 		slices.Reverse(hashRes[:])
 
-		fromLimbs := divideTo30BitLimbs(hashRes[:])
+		fromLimbs := to30BitLimbs(hashRes[:])
 
 		if i < nbEcRec {
 			isEcRecRes[i*nbRowsPerEcRec+offSetEcRec] = field.One()
@@ -98,10 +94,7 @@ func AssignEcRecTxnData(
 	}
 
 	run.AssignColumn(ecRec.EcRecoverIsRes.GetColID(), smartvectors.RightZeroPadded(isEcRecRes, size))
-
-	for i := 0; i < ecRecoverLimbColumnsNumber; i++ {
-		run.AssignColumn(ecRec.Limb[i].GetColID(), smartvectors.RightZeroPadded(ecRecLimb, size))
-	}
+	run.AssignColumn(ecRec.Limb.GetColID(), smartvectors.RightZeroPadded(ecRecLimb, size))
 
 	// they are arithmetization columns, so LeftZeroPad
 	for i := 0; i < txnDataFromColsNumber; i++ {
@@ -143,6 +136,8 @@ func (td *txnData) assignTxnDataFromPK(
 			utils.Panic("error generating signature")
 		}
 		buf := pk.A.RawBytes()
+		println(hex.EncodeToString(buf[:]))
+
 		hasher.Write(buf[:])
 		res := hasher.Sum(nil)
 		hasher.Reset()
@@ -165,7 +160,7 @@ func (td *txnData) assignTxnDataFromPK(
 	}
 
 	for i := 0; i < len(pkHash); i++ {
-		fromLimbs := divideTo30BitLimbs(pkHash[i])
+		fromLimbs := to30BitLimbs(pkHash[i])
 
 		for j, limb := range fromLimbs {
 			// Initialize limb values for each column of from
