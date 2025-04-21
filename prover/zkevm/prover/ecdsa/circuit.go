@@ -93,6 +93,8 @@ func (c *EcRecoverInstance) splitInputs(api frontend.API) (PK *sw_emulated.Affin
 }
 
 func inputFiller(circuitInstance, inputIndex int) field.Element {
+	index := inputIndex % 56
+
 	// every instance has 14 inputs.
 	// pubkey xHi, pubkey xLo, pubkey yHi, pubkey yLo, hHi, hLo, vHi, vLo, rHi, rLo, sHi, sLo, successBit, ecrecoverBit
 
@@ -120,29 +122,29 @@ func inputFiller(circuitInstance, inputIndex int) field.Element {
 	var ret field.Element
 	switch {
 	// PK X
-	case inputIndex < 9:
-		ret.SetBytes(placeholderPubkeyXLimbs[inputIndex])
+	case index < 9:
+		ret.SetBytes(placeholderPubkeyXLimbs[index])
 	// PK Y
-	case inputIndex >= 9 && inputIndex < 18:
-		ret.SetBytes(placeholderPubkeyYLimbs[inputIndex-9])
+	case index >= 9 && index < 18:
+		ret.SetBytes(placeholderPubkeyYLimbs[index-9])
 	// MSG
-	case inputIndex >= 18 && inputIndex < 27:
-		ret.SetBytes(placeholderTxHashLimbs[inputIndex-18])
+	case index >= 18 && index < 27:
+		ret.SetBytes(placeholderTxHashLimbs[index-18])
 	// v (0 limbs)
-	case inputIndex >= 27 && inputIndex < 35:
+	case index >= 27 && index < 35:
 		ret.SetUint64(0)
 	// v (1b limb)
-	case inputIndex == 36:
+	case index == 36:
 		ret.SetUint64(0x1b)
 	// r
-	case inputIndex >= 36 && inputIndex < 45:
-		ret.SetBytes(placeholderSignatureR[inputIndex-36])
+	case index >= 36 && index < 45:
+		ret.SetBytes(placeholderSignatureR[index-36])
 	// s
-	case inputIndex >= 45 && inputIndex < 54:
-		ret.SetBytes(placeholderSignatureS[inputIndex-45])
-	case inputIndex == 54: // success bit
+	case index >= 45 && index < 54:
+		ret.SetBytes(placeholderSignatureS[index-45])
+	case index == 54: // success bit
 		ret.SetUint64(1)
-	case inputIndex == 55: // ecrecover bit
+	case index == 55: // ecrecover bit
 		ret.SetUint64(0)
 	}
 
