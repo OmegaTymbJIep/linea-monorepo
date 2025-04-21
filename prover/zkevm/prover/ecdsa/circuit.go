@@ -140,9 +140,9 @@ func inputFiller(circuitInstance, inputIndex int) field.Element {
 	// s
 	case inputIndex >= 45 && inputIndex < 54:
 		ret.SetBytes(placeholderSignatureS[inputIndex-45])
-	case inputIndex == 55: // success bit
+	case inputIndex == 54: // success bit
 		ret.SetUint64(1)
-	case inputIndex == 56: // ecrecover bit
+	case inputIndex == 55: // ecrecover bit
 		ret.SetUint64(0)
 	}
 
